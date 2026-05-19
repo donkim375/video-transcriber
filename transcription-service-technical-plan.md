@@ -1,0 +1,445 @@
+# YouTube Conference Transcription Service — Technical Plan
+
+## Overview
+
+A backend service that ingests YouTube conference videos, transcribes them via AssemblyAI, segments multi-talk videos into individual talks, generates per-talk summaries, and exposes a hybrid search + RAG Q&A API.
+
+---
+
+## Stack
+
+| Concern | Choice |
+|---|---|
+| Runtime | Node.js + TypeScript |
+| Web framework | Fastify |
+| Job queue | pg-boss (Postgres-backed, no Redis) |
+| Database | Supabase (Postgres + pgvector) |
+| Transcription | AssemblyAI (with speaker diarization) |
+| Audio download | yt-dlp (CLI, via child process) |
+| Embeddings | OpenAI `text-embedding-3-small` (1536 dimensions) |
+| LLM | Anthropic Claude (summaries, segmentation, Q&A) |
+| Backend hosting | Railway |
+| DB hosting | Supabase |
+| Frontend (later) | Next.js on Vercel |
+
+---
+
+## Project Structure
+
+```
+/
+├── src/
+│   ├── index.ts                        # Fastify server entrypoint
+│   ├── worker.ts                       # pg-boss worker entrypoint (separate process)
+│   ├── config.ts                       # Env var validation + constants
+│   ├── db/
+│   │   ├── client.ts                   # Supabase client singleton
+│   │   └── migrations/
+│   │       └── 001_initial.sql         # Full schema
+│   ├── queues/
+│   │   └── jobs.ts                     # Job type definitions + enqueue helpers
+│   ├── routes/
+│   │   ├── videos.ts                   # Source video submission + status
+│   │   ├── talks.ts                    # Talk CRUD + detail
+│   │   ├── search.ts                   # Hybrid search endpoint
+│   │   └── qa.ts                       # RAG Q&A endpoint
+│   ├── services/
+│   │   ├── youtube.ts                  # yt-dlp wrapper (download + metadata)
+│   │   ├── assemblyai.ts               # Upload + transcribe + poll
+│   │   ├── segmentation.ts             # Chapter extraction + Claude fallback
+│   │   ├── chunker.ts                  # Transcript chunking (tiktoken)
+│   │   ├── embeddings.ts               # OpenAI batch embedding
+│   │   └── rag.ts                      # Retrieval + Claude Q&A
+│   ├── workers/
+│   │   ├── pipeline.worker.ts          # Orchestrates full pipeline per video
+│   │   └── steps/
+│   │       ├── download.ts
+│   │       ├── transcribe.ts
+│   │       ├── segment.ts
+│   │       ├── embed.ts
+│   │       └── summarize.ts
+│   └── types/
+│       └── index.ts                    # Shared TypeScript types
+├── package.json
+├── tsconfig.json
+├── railway.toml                        # Defines API + worker as separate Railway services
+└── .env.example
+```
+
+---
+
+## Database Schema
+
+```sql
+-- Enable pgvector extension
+create extension if not exists vector;
+
+-- -------------------------------------------------------
+-- source_videos: one row per submitted YouTube URL
+-- -------------------------------------------------------
+create table source_videos (
+  id              uuid primary key default gen_random_uuid(),
+  youtube_url     text not null unique,
+  youtube_id      text not null unique,          -- extracted video ID
+  title           text,                          -- from yt-dlp metadata
+  channel         text,
+  duration_seconds int,
+  thumbnail_url   text,
+  has_chapters    boolean default false,         -- whether yt-dlp found chapters
+  status          text not null default 'pending',
+  -- status values: pending | downloading | transcribing | segmenting | embedding | ready | failed
+  error_message   text,
+  created_at      timestamptz default now(),
+  updated_at      timestamptz default now()
+);
+
+-- -------------------------------------------------------
+-- talks: one row per individual talk within a source video
+-- -------------------------------------------------------
+create table talks (
+  id              uuid primary key default gen_random_uuid(),
+  source_video_id uuid not null references source_videos(id) on delete cascade,
+  title           text,
+  speaker         text,
+  conference      text,
+  talk_index      int not null,                  -- order within the video (0-based)
+  start_ms        int not null,                  -- start timestamp in the source video
+  end_ms          int not null,                  -- end timestamp in the source video
+  youtube_deep_link text,                        -- https://youtu.be/{id}?t={start_seconds}
+  created_at      timestamptz default now()
+);
+
+-- -------------------------------------------------------
+-- transcripts: one row per talk
+-- -------------------------------------------------------
+create table transcripts (
+  id              uuid primary key default gen_random_uuid(),
+  talk_id         uuid not null references talks(id) on delete cascade,
+  assemblyai_id   text unique,                   -- for polling / idempotency
+  raw_text        text,                          -- full plain text transcript
+  utterances      jsonb,
+  -- utterances shape: [{speaker: string, text: string, start_ms: int, end_ms: int}]
+  summary         text,                          -- generated by Claude
+  created_at      timestamptz default now()
+);
+
+-- -------------------------------------------------------
+-- chunks: transcript segments for RAG
+-- -------------------------------------------------------
+create table chunks (
+  id              uuid primary key default gen_random_uuid(),
+  talk_id         uuid not null references talks(id) on delete cascade,
+  transcript_id   uuid not null references transcripts(id) on delete cascade,
+  chunk_index     int not null,
+  text            text not null,
+  start_ms        int,                           -- mapped from utterances
+  end_ms          int,
+  token_count     int,
+  embedding       vector(1536),                  -- OpenAI text-embedding-3-small
+  created_at      timestamptz default now()
+);
+
+-- -------------------------------------------------------
+-- Indexes
+-- -------------------------------------------------------
+
+-- Full-text search on chunks
+create index chunks_fts_idx
+  on chunks using gin(to_tsvector('english', text));
+
+-- Vector similarity search (cosine distance)
+-- Note: create this AFTER inserting data for best performance
+create index chunks_embedding_idx
+  on chunks using ivfflat (embedding vector_cosine_ops)
+  with (lists = 100);
+
+-- Foreign key lookups
+create index talks_source_video_id_idx on talks(source_video_id);
+create index chunks_talk_id_idx on chunks(talk_id);
+create index transcripts_talk_id_idx on transcripts(talk_id);
+```
+
+---
+
+## Pipeline: Step by Step
+
+### Step 0 — Submit a video (`POST /videos`)
+
+- Validate YouTube URL, extract video ID
+- Check for duplicate (return existing record if already processed)
+- Insert row into `source_videos` with `status: pending`
+- Enqueue a pg-boss job `{ source_video_id }`
+- Return `{ source_video_id, status: "pending" }`
+
+### Step 1 — Download
+
+- Update `status: downloading`
+- Run `yt-dlp` with `--print-json` to extract metadata (title, channel, duration, chapters)
+- Run `yt-dlp -x --audio-format mp3 -o /tmp/{source_video_id}.mp3 {youtube_url}` to download audio
+- Update `source_videos` with metadata
+- Set `has_chapters: true` if chapters are present in yt-dlp output
+
+### Step 2 — Transcribe
+
+- Update `status: transcribing`
+- Upload `/tmp/{source_video_id}.mp3` to AssemblyAI
+- Request speaker diarization (`speaker_labels: true`)
+- Store `assemblyai_id` immediately (for crash recovery)
+- Poll AssemblyAI every 5 seconds until `status === "completed"`
+- Store full `raw_text` and `utterances` array temporarily (not yet segmented)
+- Delete the temp mp3 file
+
+### Step 3 — Segment into talks
+
+- Update `status: segmenting`
+
+**Path A — chapters available:**
+- Parse yt-dlp chapter data: `[{ title, start_time_ms, end_time_ms }]`
+- Create one `talks` row per chapter, with `start_ms` / `end_ms`
+- Slice the full `utterances` array into per-talk utterances by timestamp range
+
+**Path B — no chapters (Claude fallback):**
+- Send the full transcript to Claude with this prompt:
+  ```
+  This is a transcript of a conference video that contains multiple individual talks.
+  Identify each talk's boundaries. Return JSON array:
+  [{ "title": string, "speaker": string, "start_ms": number, "end_ms": number }]
+  Use the utterance timestamps to determine boundaries. Look for applause,
+  "thank you", speaker introductions, and topic shifts as signals.
+  ```
+- Parse Claude's response and create `talks` rows accordingly
+
+For each talk:
+- Insert row into `talks` with `source_video_id`, `start_ms`, `end_ms`, `title`, `speaker`, `talk_index`
+- Compute `youtube_deep_link`: `https://youtu.be/{youtube_id}?t={start_seconds}`
+- Insert row into `transcripts` with the sliced `utterances` and joined `raw_text`
+
+### Step 4 — Chunk and embed
+
+- Update `status: embedding`
+- For each talk's transcript:
+  - Split `raw_text` into chunks using `tiktoken` (`cl100k_base` encoding)
+  - Target: 400 tokens per chunk, 50-token overlap
+  - Chunk boundaries should respect sentence boundaries (split on `.`, `?`, `!`)
+  - Map each chunk's character offset back to utterances to assign `start_ms` / `end_ms`
+  - Batch embed chunks via OpenAI API (up to 100 per request)
+  - Insert all chunks into `chunks` table
+
+### Step 5 — Summarize
+
+- For each talk, call Claude with:
+  ```
+  Summarize this engineering conference talk in 3-5 paragraphs.
+  Cover: the speaker's main argument, key technical concepts or frameworks mentioned,
+  any tools or libraries discussed, and the most actionable insights.
+  Keep it dense and technical — the audience is senior engineers.
+  ```
+- Store summary in `transcripts.summary`
+- Update `source_videos.status: ready`
+
+---
+
+## API Endpoints
+
+### Videos
+
+```
+POST   /videos
+  Body: { youtube_url: string, conference?: string }
+  Returns: { source_video_id, status }
+
+GET    /videos
+  Returns: [{ source_video_id, title, channel, status, talk_count, created_at }]
+
+GET    /videos/:id
+  Returns: { ...source_video, talks: [{ id, title, speaker, start_ms, end_ms }] }
+
+GET    /videos/:id/status
+  Returns: { status, current_step, error_message }
+  — Poll this every 3s from the frontend during processing
+```
+
+### Talks
+
+```
+GET    /talks
+  Query: ?conference=&speaker=&limit=&offset=
+  Returns: [{ id, title, speaker, conference, youtube_deep_link, summary_preview }]
+
+GET    /talks/:id
+  Returns: { ...talk, transcript: { raw_text, summary, utterances }, source_video }
+```
+
+### Search
+
+```
+POST   /search
+  Body: { query: string, talk_id?: string, limit?: number (default 10) }
+  Returns: { results: [{ chunk_text, talk_id, talk_title, speaker, start_ms, youtube_deep_link, score }] }
+```
+
+**Search logic (hybrid):**
+1. Keyword search: `WHERE to_tsvector('english', text) @@ plainto_tsquery($query)`
+2. Semantic search: embed query → `ORDER BY embedding <=> $vector LIMIT 20`
+3. Merge results, deduplicate by chunk ID, rank by combined score (reciprocal rank fusion)
+4. Return top N with source metadata and deep-link timestamps
+
+### Q&A
+
+```
+POST   /qa
+  Body: { question: string, talk_id?: string }
+  Returns: { answer: string, sources: [{ talk_title, speaker, start_ms, youtube_deep_link, excerpt }] }
+```
+
+**RAG logic:**
+1. Embed the question
+2. Retrieve top 8 chunks by cosine similarity (optionally filtered by `talk_id`)
+3. Build context string from chunks including talk title, speaker, and timestamp
+4. Call Claude:
+   ```
+   Answer the following question using only the transcript excerpts provided.
+   For each claim in your answer, cite the talk title and timestamp.
+   If the answer is not in the transcripts, say so explicitly.
+
+   Question: {question}
+
+   Transcript excerpts:
+   {context}
+   ```
+5. Return structured response with answer and source list
+
+---
+
+## Worker Architecture
+
+The pipeline worker runs as a **separate process** from the Fastify API server. Both are deployed on Railway as separate services pointing to the same codebase.
+
+```
+railway.toml
+
+[services.api]
+  start = "node dist/index.js"
+
+[services.worker]
+  start = "node dist/worker.ts"
+```
+
+`worker.ts` registers a pg-boss handler:
+
+```typescript
+const boss = new PgBoss(process.env.SUPABASE_CONNECTION_STRING)
+await boss.start()
+await boss.work('transcription-pipeline', { teamSize: 2, teamConcurrency: 1 }, pipelineHandler)
+```
+
+- `teamSize: 2` — process up to 2 videos concurrently
+- Each step updates `source_videos.status` so the frontend can show progress
+- If a step throws, pg-boss retries up to 3 times with exponential backoff
+- Store `assemblyai_id` before polling so a crashed worker can resume polling on retry
+
+---
+
+## Key Implementation Notes
+
+### yt-dlp invocation
+
+```typescript
+// Get metadata + chapters
+const meta = JSON.parse(
+  execSync(`yt-dlp --print-json --skip-download "${url}"`).toString()
+)
+// meta.chapters: [{ title, start_time, end_time }] — times in seconds
+
+// Download audio
+execSync(`yt-dlp -x --audio-format mp3 -o "/tmp/${id}.mp3" "${url}"`)
+```
+
+### Chunking with tiktoken
+
+```typescript
+import { encoding_for_model } from 'tiktoken'
+
+const enc = encoding_for_model('text-embedding-3-small')
+// Split raw_text into sentences first, then greedily pack into 400-token chunks
+// with 50-token overlap by repeating the last sentence(s) of the previous chunk
+```
+
+### Embedding batching
+
+```typescript
+// OpenAI allows up to 2048 inputs per request for text-embedding-3-small
+// Batch in groups of 100 to stay safe, with 100ms delay between batches
+const response = await openai.embeddings.create({
+  model: 'text-embedding-3-small',
+  input: batch.map(c => c.text)
+})
+```
+
+### Supabase pgvector query
+
+```typescript
+// Semantic search
+const { data } = await supabase.rpc('match_chunks', {
+  query_embedding: embedding,
+  match_threshold: 0.7,
+  match_count: 20,
+  filter_talk_id: talkId ?? null
+})
+
+// Create this as a Postgres function in migrations:
+// create function match_chunks(query_embedding vector(1536), match_threshold float,
+//   match_count int, filter_talk_id uuid)
+// returns table(id uuid, text text, talk_id uuid, start_ms int, end_ms int, similarity float)
+// as $$ ... $$
+```
+
+---
+
+## Environment Variables
+
+```bash
+# Supabase
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_CONNECTION_STRING=        # for pg-boss direct Postgres connection
+
+# External APIs
+ASSEMBLYAI_API_KEY=
+OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
+
+# Server
+PORT=3000
+NODE_ENV=production
+```
+
+---
+
+## Implementation Order (recommended for Claude Code)
+
+1. **DB migrations** — run `001_initial.sql` on Supabase, verify schema + indexes
+2. **Config + Supabase client** — `config.ts`, `db/client.ts`
+3. **YouTube service** — `services/youtube.ts` — yt-dlp wrapper, test with a real URL
+4. **AssemblyAI service** — `services/assemblyai.ts` — upload, poll, return utterances
+5. **Segmentation service** — `services/segmentation.ts` — chapters first, Claude fallback
+6. **Chunker** — `services/chunker.ts` — tiktoken-based, test chunk counts on a real transcript
+7. **Embeddings service** — `services/embeddings.ts` — batched OpenAI calls
+8. **Pipeline worker** — wire steps 3–7 together in `workers/pipeline.worker.ts`
+9. **pg-boss setup** — `queues/jobs.ts`, `worker.ts` entrypoint
+10. **Fastify routes** — `routes/videos.ts`, `routes/talks.ts`
+11. **Search route** — `routes/search.ts` — hybrid keyword + semantic
+12. **RAG service + Q&A route** — `services/rag.ts`, `routes/qa.ts`
+13. **Railway deployment** — `railway.toml`, environment variables, deploy API + worker
+
+---
+
+## Notes for Later (Post-MVP)
+
+- **Auth:** Add Clerk or Supabase Auth, make all routes user-scoped
+- **Monetization:** Track `transcription_minutes` and `qa_requests` per user for usage-based billing
+- **Playlist support:** Accept YouTube playlist URLs, enqueue one job per video
+- **Frontend:** Next.js on Vercel, three screens: submit + queue view, talk library with search, talk detail with summary + Q&A chat
+- **Cost tracking:** Log AssemblyAI + OpenAI + Anthropic spend per video to inform pricing
+- **Caching:** Cache embeddings for repeated queries, cache summaries (already stored)
+- **Vector index rebuild:** After bulk inserts, run `REINDEX INDEX chunks_embedding_idx` for better IVFFlat performance
