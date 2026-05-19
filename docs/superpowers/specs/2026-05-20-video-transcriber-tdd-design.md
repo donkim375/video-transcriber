@@ -100,8 +100,8 @@ This spec restructures the original technical plan around a **test-driven develo
 │   │   ├── talks.test.ts
 │   │   ├── search.test.ts
 │   │   └── qa.test.ts
-│   ├── e2e/                            # Full pipeline smoke
-│   │   └── pipeline.e2e.test.ts
+│   ├── smoke/                          # Full pipeline smoke (all mocks wired)
+│   │   └── pipeline.smoke.test.ts
 │   ├── fixtures/                       # Shared test data
 │   │   ├── transcripts.ts
 │   │   ├── chapters.ts
@@ -185,9 +185,10 @@ create index chunks_talk_id_idx on chunks(talk_id);
 create index transcripts_talk_id_idx on transcripts(talk_id);
 
 -- Vector similarity search function
+-- Threshold filtering is done in application code (rag.ts), not here.
+-- Filtering by similarity in WHERE defeats HNSW index usage.
 create function match_chunks(
   query_embedding vector(1536),
-  match_threshold float,
   match_count int,
   filter_talk_id uuid default null
 )
@@ -203,7 +204,6 @@ as $$
     1 - (chunks.embedding <=> query_embedding) as similarity
   from chunks
   where (filter_talk_id is null or chunks.talk_id = filter_talk_id)
-    and 1 - (chunks.embedding <=> query_embedding) > match_threshold
   order by chunks.embedding <=> query_embedding
   limit match_count;
 $$;
@@ -213,6 +213,45 @@ $$;
 
 ## Service Interfaces
 
+### Core Types (`src/types/index.ts`)
+
+```typescript
+interface VideoMetadata {
+  title: string
+  channel: string
+  durationSeconds: number
+  thumbnailUrl: string
+  chapters: { title: string; startMs: number; endMs: number }[]
+}
+
+interface Utterance {
+  speaker: string
+  text: string
+  startMs: number
+  endMs: number
+}
+
+interface TranscriptionResult {
+  assemblyaiId: string
+  rawText: string
+  utterances: Utterance[]
+}
+
+interface TranscriptionStatus {
+  id: string
+  status: 'queued' | 'processing' | 'completed' | 'error'
+}
+
+interface TalkBoundary {
+  title: string
+  speaker: string
+  startMs: number
+  endMs: number
+}
+```
+
+### Service Interfaces (`src/interfaces/`)
+
 ```typescript
 interface IYouTubeService {
   getMetadata(url: string): Promise<VideoMetadata>
@@ -220,7 +259,7 @@ interface IYouTubeService {
 }
 
 interface ITranscriptionService {
-  transcribe(audioPath: string, options: TranscribeOptions): Promise<TranscriptionResult>
+  transcribe(audioPath: string): Promise<TranscriptionResult>
   getStatus(transcriptionId: string): Promise<TranscriptionStatus>
 }
 
@@ -362,8 +401,8 @@ Fastify injection with mock services:
 3. Search endpoint
 4. Q&A endpoint
 
-### Layer 8 — End-to-End Smoke
-Full pipeline with all mocks wired, verifying complete flow.
+### Layer 8 — Smoke Tests
+Full pipeline with all mocks wired, verifying complete flow from video submission to searchable results. No real external APIs.
 
 ### Layer 9 — README + Setup Docs
 - Write `README.md` with: project overview, prerequisites, local setup, running tests, environment variables, deployment
@@ -388,6 +427,25 @@ Separate process from Fastify API. Both deployed on Railway:
 ```
 
 pg-boss config: `teamSize: 2`, `teamConcurrency: 1`. Retries up to 3 times with exponential backoff.
+
+---
+
+## Package Scripts
+
+```json
+{
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "dev:worker": "tsx watch src/worker.ts",
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "docker compose -f docker-compose.test.yml up -d && vitest run --config vitest.integration.config.ts",
+    "test:all": "npm test && npm run test:integration",
+    "typecheck": "tsc --noEmit"
+  }
+}
+```
 
 ---
 
