@@ -364,6 +364,10 @@ Fastify injection with mock services:
 ### Layer 8 — End-to-End Smoke
 Full pipeline with all mocks wired, verifying complete flow.
 
+### Layer 9 — README + Setup Docs
+- Write `README.md` with: project overview, prerequisites, local setup, running tests, environment variables, deployment
+- Verify all setup instructions work from a clean clone
+
 **Done signal per layer:** `vitest run && tsc --noEmit` passes.
 
 **Commit discipline:** Each completed layer is committed as a clean, passing commit before starting the next layer.
