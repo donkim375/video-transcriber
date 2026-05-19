@@ -179,7 +179,7 @@ create table chunks (
 );
 
 create index chunks_fts_idx on chunks using gin(to_tsvector('english', text));
-create index chunks_embedding_idx on chunks using ivfflat (embedding vector_cosine_ops) with (lists = 100);
+create index chunks_embedding_idx on chunks using hnsw (embedding vector_cosine_ops) with (m = 16, ef_construction = 64);
 create index talks_source_video_id_idx on talks(source_video_id);
 create index chunks_talk_id_idx on chunks(talk_id);
 create index transcripts_talk_id_idx on transcripts(talk_id);
@@ -348,11 +348,12 @@ Integration tests against real Postgres:
 3. `match_chunks` vector search function
 4. Full-text search
 
-### Layer 6 — Pipeline Orchestration
-Mocked services, test state machine:
+### Layer 6 — Pipeline Orchestration (Docker Postgres)
+Integration tests against Docker Postgres (reuses Layer 5 container). pg-boss runs against real Postgres for honest job lifecycle testing:
 1. State transitions (pending → downloading → ... → ready)
 2. Error handling + retry
-3. pg-boss job lifecycle
+3. pg-boss job enqueue, processing, completion, and failure
+4. External services remain mocked via interfaces
 
 ### Layer 7 — API Routes
 Fastify injection with mock services:
