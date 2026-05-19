@@ -91,7 +91,7 @@ This spec restructures the original technical plan around a **test-driven develo
 │   │   ├── rag.test.ts
 │   │   └── pipeline.test.ts
 │   ├── integration/                    # Docker Postgres, run separately
-│   │   ├── db-setup.ts                # Test container lifecycle
+│   │   ├── db-setup.ts                # Test container lifecycle + connection retry loop
 │   │   ├── migrations.test.ts
 │   │   ├── queries.test.ts
 │   │   └── vector-search.test.ts
@@ -259,8 +259,9 @@ interface IYouTubeService {
 }
 
 interface ITranscriptionService {
-  transcribe(audioPath: string): Promise<TranscriptionResult>
+  submit(audioPath: string): Promise<{ assemblyaiId: string }>
   getStatus(transcriptionId: string): Promise<TranscriptionStatus>
+  getResult(transcriptionId: string): Promise<TranscriptionResult>
 }
 
 interface IEmbeddingService {
@@ -293,9 +294,10 @@ interface ILLMService {
 
 ### Step 2 — Transcribe
 - Update `status: transcribing`
-- `ITranscriptionService.transcribe()` — upload audio, request speaker diarization
-- Store `assemblyai_id` for crash recovery
-- Poll until complete
+- `ITranscriptionService.submit()` — upload audio, returns `{ assemblyaiId }`
+- Store `assemblyai_id` in DB immediately (crash recovery: restarted worker resumes polling from stored ID)
+- Poll `ITranscriptionService.getStatus()` until `completed`
+- `ITranscriptionService.getResult()` — fetch full transcript
 - Store `raw_text` and `utterances`
 - Delete temp mp3
 
@@ -381,7 +383,7 @@ Implement behind interfaces; Layer 3 tests define expected behavior:
 5. **RAG service** — retrieval + answer composition
 
 ### Layer 5 — Database Layer (Docker Postgres)
-Integration tests against real Postgres:
+Integration tests against real Postgres. `db-setup.ts` handles connection readiness with a retry loop (Postgres takes 2-5s after container start):
 1. Run migrations, verify schema
 2. CRUD for source_videos, talks, transcripts, chunks
 3. `match_chunks` vector search function
