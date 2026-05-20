@@ -45,7 +45,7 @@ describe('YouTubeService.getMetadata', () => {
 
 describe('YouTubeService.downloadAudio', () => {
   it('runs yt-dlp with -x and writes to outputPath', async () => {
-    const exec = vi.fn(async () => ({ stdout: '', stderr: '' }))
+    const exec = vi.fn(async (_cmd: string) => ({ stdout: '', stderr: '' }))
     const svc = new YouTubeService({ exec })
     await svc.downloadAudio('https://youtu.be/abc', '/tmp/abc.mp3')
     expect(exec).toHaveBeenCalledOnce()
