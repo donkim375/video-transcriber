@@ -105,4 +105,17 @@ describe('chunkUtterances', () => {
     expect(chunks[1]).toMatchObject({ text: 'This is a test.',        startMs: 1500, endMs: 4000 })
     expect(chunks[2]).toMatchObject({ text: 'Another sentence here.', startMs: 5000, endMs: 7000 })
   })
+
+  it('falls back to utterance span when words are absent', () => {
+    // Note: same fixture shape as the words case but with `words` omitted.
+    const utts: Utterance[] = [
+      { speaker: 'A', text: 'Hello world. This is a test.', startMs: 0,    endMs: 4000 },
+      { speaker: 'A', text: 'Another sentence here.',       startMs: 5000, endMs: 7000 },
+    ]
+    const chunks = chunkUtterances(utts, { targetTokens: 5, overlapTokens: 0 })
+    expect(chunks).toHaveLength(3)
+    expect(chunks[0]).toMatchObject({ text: 'Hello world.',           startMs: 0,    endMs: 4000 })
+    expect(chunks[1]).toMatchObject({ text: 'This is a test.',        startMs: 0,    endMs: 4000 })
+    expect(chunks[2]).toMatchObject({ text: 'Another sentence here.', startMs: 5000, endMs: 7000 })
+  })
 })
