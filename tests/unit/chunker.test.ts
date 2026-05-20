@@ -118,4 +118,23 @@ describe('chunkUtterances', () => {
     expect(chunks[1]).toMatchObject({ text: 'This is a test.',        startMs: 0,    endMs: 4000 })
     expect(chunks[2]).toMatchObject({ text: 'Another sentence here.', startMs: 5000, endMs: 7000 })
   })
+
+  it('aligns sentences containing contractions, decimals, and punctuation', () => {
+    const utts: Utterance[] = [
+      {
+        speaker: 'A',
+        text: "It's 3.14 percent.",
+        startMs: 0,
+        endMs: 2000,
+        words: [
+          { text: "It's",     startMs: 0,    endMs: 400  },
+          { text: '3.14',     startMs: 400,  endMs: 1200 },
+          { text: 'percent.', startMs: 1200, endMs: 2000 },
+        ],
+      },
+    ]
+    const chunks = chunkUtterances(utts, { targetTokens: 50, overlapTokens: 0 })
+    expect(chunks).toHaveLength(1)
+    expect(chunks[0]).toMatchObject({ startMs: 0, endMs: 2000 })
+  })
 })
