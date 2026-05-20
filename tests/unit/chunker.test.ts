@@ -137,4 +137,28 @@ describe('chunkUtterances', () => {
     expect(chunks).toHaveLength(1)
     expect(chunks[0]).toMatchObject({ startMs: 0, endMs: 2000 })
   })
+
+  it('falls back per-sentence on alignment failure without poisoning subsequent sentences', () => {
+    // Utterance text has two sentences. The first sentence ("Foo bar baz quux.")
+    // shares no tokens with the words array — alignment must fail and fall back
+    // to the utterance span (0, 5000). The second sentence ("Hello world.") aligns.
+    const utts: Utterance[] = [
+      {
+        speaker: 'A',
+        text: 'Foo bar baz quux. Hello world.',
+        startMs: 0,
+        endMs: 5000,
+        words: [
+          { text: 'Hello',  startMs: 3000, endMs: 3500 },
+          { text: 'world.', startMs: 3500, endMs: 5000 },
+        ],
+      },
+    ]
+    const chunks = chunkUtterances(utts, { targetTokens: 5, overlapTokens: 0 })
+    expect(chunks).toHaveLength(2)
+    // First sentence: alignment failed (0/4 tokens match) → fallback to utterance span.
+    expect(chunks[0]).toMatchObject({ text: 'Foo bar baz quux.', startMs: 0,    endMs: 5000 })
+    // Second sentence: aligned cleanly.
+    expect(chunks[1]).toMatchObject({ text: 'Hello world.',      startMs: 3000, endMs: 5000 })
+  })
 })
