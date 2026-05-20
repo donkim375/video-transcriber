@@ -13,10 +13,11 @@ import { MockTranscriptionService } from '../mocks/assemblyai.mock.js'
 import { MockEmbeddingService } from '../mocks/embeddings.mock.js'
 import { MockLLMService } from '../mocks/llm.mock.js'
 import { insertSourceVideo } from '../../src/db/queries.js'
+import type { PipelineJobData } from '../../src/queues/jobs.js'
 
 const pool = makeTestPool()
 let app: FastifyInstance
-const enqueue = vi.fn(async () => 'job-1')
+const enqueue = vi.fn<(data: PipelineJobData) => Promise<string>>(async () => 'job-1')
 
 beforeAll(async () => {
   startContainer()
@@ -78,6 +79,47 @@ describe('POST /videos', () => {
     })
     expect(res.statusCode).toBe(200)
     expect(res.json().source_video_id).toBe(sv.id)
+    expect(enqueue).not.toHaveBeenCalled()
+  })
+
+  it('defaults content_type to "auto" when omitted and passes it to enqueueJob', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/videos',
+      payload: { youtube_url: 'https://www.youtube.com/watch?v=defaultabc1' },
+    })
+    expect(res.statusCode).toBe(201)
+    expect(res.json().content_type).toBe('auto')
+    expect(enqueue).toHaveBeenCalledOnce()
+    const jobData = enqueue.mock.calls[0]![0]
+    expect(jobData.contentType).toBe('auto')
+  })
+
+  it('accepts explicit content_type, echoes it back, and forwards to enqueueJob', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/videos',
+      payload: {
+        youtube_url: 'https://www.youtube.com/watch?v=singlespkr1',
+        content_type: 'single_speaker',
+      },
+    })
+    expect(res.statusCode).toBe(201)
+    expect(res.json().content_type).toBe('single_speaker')
+    const jobData = enqueue.mock.calls[0]![0]
+    expect(jobData.contentType).toBe('single_speaker')
+  })
+
+  it('rejects unknown content_type with 400', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/videos',
+      payload: {
+        youtube_url: 'https://www.youtube.com/watch?v=badtypeabc1',
+        content_type: 'lecture',
+      },
+    })
+    expect(res.statusCode).toBe(400)
     expect(enqueue).not.toHaveBeenCalled()
   })
 })

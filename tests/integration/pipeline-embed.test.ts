@@ -62,8 +62,13 @@ describe('runEmbed', () => {
       youtubeUrl: 'https://youtu.be/abc',
     }
 
-    const text = 'Welcome to the conference. Our first talk is by Alice. Today I will discuss vectors. Vectors are arrays of numbers.'
-    await runEmbed(ctx, { talks: [{ talkId: talk.id, transcriptId: tx.id, text }] })
+    const utterances = [
+      { speaker: 'A', startMs: 0, endMs: 2500, text: 'Welcome to the conference.' },
+      { speaker: 'A', startMs: 2500, endMs: 5000, text: 'Our first talk is by Alice.' },
+      { speaker: 'B', startMs: 5000, endMs: 7500, text: 'Today I will discuss vectors.' },
+      { speaker: 'B', startMs: 7500, endMs: 10000, text: 'Vectors are arrays of numbers.' },
+    ]
+    await runEmbed(ctx, { talks: [{ talkId: talk.id, transcriptId: tx.id, utterances }] })
 
     const { rows: chunkRows } = await pool.query('select * from chunks where talk_id = $1 order by chunk_index asc', [talk.id])
     expect(chunkRows.length).toBeGreaterThan(0)
@@ -71,6 +76,8 @@ describe('runEmbed', () => {
       expect(r.transcript_id).toBe(tx.id)
       expect(r.text.length).toBeGreaterThan(0)
       expect(r.token_count).toBeGreaterThan(0)
+      expect(r.start_ms).not.toBeNull()
+      expect(r.end_ms).not.toBeNull()
     }
     expect(embeddings.batches.length).toBeGreaterThan(0)
 

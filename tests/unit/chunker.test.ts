@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { chunkText } from '../../src/services/chunker.js'
+import { chunkText, chunkUtterances } from '../../src/services/chunker.js'
+import type { Utterance } from '../../src/types/index.js'
 
 describe('chunkText', () => {
   it('returns a single chunk for short input', () => {
@@ -41,5 +42,57 @@ describe('chunkText', () => {
     const longText = Array.from({ length: 100 }, (_, i) => `Sentence ${i}.`).join(' ')
     const chunks = chunkText(longText, { targetTokens: 60, overlapTokens: 10 })
     chunks.forEach((c, i) => expect(c.chunkIndex).toBe(i))
+  })
+})
+
+describe('chunkUtterances', () => {
+  const opts = { targetTokens: 400, overlapTokens: 50 }
+
+  it('returns empty array for empty utterances', () => {
+    expect(chunkUtterances([], opts)).toEqual([])
+  })
+
+  it('returns a single chunk preserving min(startMs)/max(endMs) across utterances', () => {
+    const utts: Utterance[] = [
+      { speaker: 'A', text: 'Hello world.', startMs: 1000, endMs: 2000 },
+      { speaker: 'A', text: 'How are you.', startMs: 2000, endMs: 3500 },
+    ]
+    const chunks = chunkUtterances(utts, opts)
+    expect(chunks).toHaveLength(1)
+    expect(chunks[0]!.startMs).toBe(1000)
+    expect(chunks[0]!.endMs).toBe(3500)
+    expect(chunks[0]!.text).toBe('Hello world. How are you.')
+  })
+
+  it('chunks split by token budget retain their member utterance timestamps', () => {
+    const utts: Utterance[] = Array.from({ length: 30 }, (_, i) => ({
+      speaker: 'A',
+      text: `Sentence number ${i}.`,
+      startMs: i * 1000,
+      endMs: (i + 1) * 1000,
+    }))
+    const chunks = chunkUtterances(utts, { targetTokens: 30, overlapTokens: 5 })
+    expect(chunks.length).toBeGreaterThan(1)
+    for (const c of chunks) {
+      expect(c.startMs).not.toBeNull()
+      expect(c.endMs).not.toBeNull()
+      expect(c.startMs! % 1000).toBe(0)
+      expect(c.endMs! % 1000).toBe(0)
+      expect(c.endMs!).toBeGreaterThan(c.startMs!)
+    }
+    expect(chunks[0]!.startMs).toBe(0)
+    const last = chunks[chunks.length - 1]!
+    expect(last.endMs).toBe(30000)
+  })
+
+  it('splits an utterance into sentences and tracks tokens', () => {
+    const utts: Utterance[] = [
+      { speaker: 'A', text: 'First. Second. Third.', startMs: 0, endMs: 3000 },
+    ]
+    const chunks = chunkUtterances(utts, opts)
+    expect(chunks).toHaveLength(1)
+    expect(chunks[0]!.tokenCount).toBeGreaterThan(0)
+    expect(chunks[0]!.startMs).toBe(0)
+    expect(chunks[0]!.endMs).toBe(3000)
   })
 })

@@ -20,10 +20,11 @@ cp .env.example .env
 # edit .env with your keys + database URL
 ```
 
-Apply the schema to your database:
+Apply the schema to your database. Run migrations in order; each is idempotent:
 
 ```bash
 psql "$SUPABASE_CONNECTION_STRING" -f src/db/migrations/001_initial.sql
+psql "$SUPABASE_CONNECTION_STRING" -f src/db/migrations/002_content_type.sql
 ```
 
 ## Running

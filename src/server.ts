@@ -8,6 +8,7 @@ import { registerVideoRoutes } from './routes/videos.js'
 import { registerTalkRoutes } from './routes/talks.js'
 import { registerSearchRoutes } from './routes/search.js'
 import { registerQaRoutes } from './routes/qa.js'
+import type { PipelineJobData } from './queues/jobs.js'
 
 export interface AppDeps {
   pool: Pool
@@ -15,7 +16,7 @@ export interface AppDeps {
   transcription: ITranscriptionService
   embeddings: IEmbeddingService
   llm: ILLMService
-  enqueueJob: (data: { sourceVideoId: string; youtubeUrl: string }) => Promise<string>
+  enqueueJob: (data: PipelineJobData) => Promise<string>
 }
 
 export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {

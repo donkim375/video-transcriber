@@ -89,6 +89,7 @@ describe('pipeline error handling', () => {
     await boss.send(QUEUE_PIPELINE, {
       sourceVideoId: sv.id,
       youtubeUrl: 'https://youtu.be/err',
+      contentType: 'conference',
     })
 
     const deadline = Date.now() + 20_000
