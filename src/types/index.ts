@@ -33,3 +33,7 @@ export interface TalkBoundary {
   startMs: number
   endMs: number
 }
+
+export type ContentType = 'single_speaker' | 'conference' | 'podcast_interview' | 'auto'
+
+export const CONTENT_TYPES: ContentType[] = ['single_speaker', 'conference', 'podcast_interview', 'auto']

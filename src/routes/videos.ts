@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import type { AppDeps } from '../server.js'
 import { extractYouTubeId } from '../services/url-validator.js'
+import { CONTENT_TYPES, type ContentType } from '../types/index.js'
 import {
   insertSourceVideo,
   getSourceVideoById,
@@ -9,8 +10,11 @@ import {
   listTalksForVideo,
 } from '../db/queries.js'
 
+const ContentTypeEnum = z.enum(CONTENT_TYPES as [ContentType, ...ContentType[]])
+
 const PostBody = z.object({
-  youtube_url: z.string(),
+  youtube_url: z.string().url(),
+  content_type: ContentTypeEnum.optional(),
   conference: z.string().optional(),
 })
 
@@ -26,12 +30,14 @@ export async function registerVideoRoutes(app: FastifyInstance, deps: AppDeps): 
       return reply.code(200).send({ source_video_id: existing.id, status: existing.status })
     }
 
+    const contentType = parsed.data.content_type ?? 'auto'
     const sv = await insertSourceVideo(deps.pool, {
       youtubeUrl: parsed.data.youtube_url,
       youtubeId,
+      contentType,
     })
-    await deps.enqueueJob({ sourceVideoId: sv.id, youtubeUrl: parsed.data.youtube_url })
-    return reply.code(201).send({ source_video_id: sv.id, status: 'pending' })
+    await deps.enqueueJob({ sourceVideoId: sv.id, youtubeUrl: parsed.data.youtube_url, contentType })
+    return reply.code(201).send({ source_video_id: sv.id, status: 'pending', content_type: contentType })
   })
 
   app.get('/videos', async () => {

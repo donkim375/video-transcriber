@@ -1,4 +1,5 @@
 import type pg from 'pg'
+import type { ContentType } from '../types/index.js'
 
 export interface SourceVideoRow {
   id: string
@@ -9,6 +10,7 @@ export interface SourceVideoRow {
   duration_seconds: number | null
   thumbnail_url: string | null
   has_chapters: boolean
+  content_type: ContentType
   status: string
   error_message: string | null
   created_at: Date
@@ -17,12 +19,12 @@ export interface SourceVideoRow {
 
 export async function insertSourceVideo(
   pool: pg.Pool,
-  v: { youtubeUrl: string; youtubeId: string; title?: string; channel?: string }
+  v: { youtubeUrl: string; youtubeId: string; contentType?: ContentType; title?: string; channel?: string }
 ): Promise<{ id: string }> {
   const { rows } = await pool.query(
-    `insert into source_videos (youtube_url, youtube_id, title, channel)
-     values ($1, $2, $3, $4) returning id`,
-    [v.youtubeUrl, v.youtubeId, v.title ?? null, v.channel ?? null]
+    `insert into source_videos (youtube_url, youtube_id, content_type, title, channel)
+     values ($1, $2, $3, $4, $5) returning id`,
+    [v.youtubeUrl, v.youtubeId, v.contentType ?? 'auto', v.title ?? null, v.channel ?? null]
   )
   return { id: rows[0].id }
 }

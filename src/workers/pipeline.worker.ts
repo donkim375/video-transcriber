@@ -22,10 +22,20 @@ export async function registerPipelineWorker(
         const dl = await runDownload(ctx)
         const meta = await deps.youtube.getMetadata(job.data.youtubeUrl)
         const transcription = await runTranscribe(ctx, { audioPath: dl.audioPath })
-        const seg = await runSegment(ctx, { transcription, chapters: meta.chapters })
-        const talks = seg.talkIds.map((t) => ({ talkId: t.talkId, transcriptId: t.transcriptId, text: t.text }))
-        await runEmbed(ctx, { talks })
-        await runSummarize(ctx, { talks })
+        const seg = await runSegment(ctx, {
+          transcription,
+          chapters: meta.chapters,
+          contentType: job.data.contentType,
+          videoTitle: meta.title,
+        })
+        const embedTalks = seg.talkIds.map((t) => ({
+          talkId: t.talkId, transcriptId: t.transcriptId, utterances: t.utterances,
+        }))
+        const summarizeTalks = seg.talkIds.map((t) => ({
+          talkId: t.talkId, transcriptId: t.transcriptId, text: t.text,
+        }))
+        await runEmbed(ctx, { talks: embedTalks })
+        await runSummarize(ctx, { talks: summarizeTalks })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         await updateSourceVideoStatus(deps.pool, job.data.sourceVideoId, 'error', msg)

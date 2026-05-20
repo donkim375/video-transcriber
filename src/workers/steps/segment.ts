@@ -1,17 +1,19 @@
 import type { StepContext } from '../types.js'
-import type { TranscriptionResult, TalkBoundary } from '../../types/index.js'
+import type { TranscriptionResult, TalkBoundary, ContentType, Utterance } from '../../types/index.js'
 import {
   updateSourceVideoStatus, insertTalk, insertTranscript,
 } from '../../db/queries.js'
-import { boundariesFromChapters, sliceUtterancesByBoundary } from '../../services/segmentation.js'
+import { resolveSegmentationStrategy, sliceUtterancesByBoundary } from '../../services/segmentation.js'
 
 export interface SegmentInput {
   transcription: TranscriptionResult
   chapters: { title: string; startMs: number; endMs: number }[]
+  contentType?: ContentType
+  videoTitle?: string
 }
 
 export interface SegmentResult {
-  talkIds: { talkId: string; transcriptId: string; boundary: TalkBoundary; text: string }[]
+  talkIds: { talkId: string; transcriptId: string; boundary: TalkBoundary; text: string; utterances: Utterance[] }[]
 }
 
 function buildDeepLink(url: string, startMs: number): string {
@@ -24,9 +26,13 @@ function buildDeepLink(url: string, startMs: number): string {
 export async function runSegment(ctx: StepContext, input: SegmentInput): Promise<SegmentResult> {
   await updateSourceVideoStatus(ctx.pool, ctx.sourceVideoId, 'segmenting')
 
-  const boundaries: TalkBoundary[] = input.chapters.length > 0
-    ? boundariesFromChapters(input.chapters)
-    : await ctx.llm.segmentTranscript(input.transcription.rawText)
+  const strategy = resolveSegmentationStrategy(input.contentType ?? 'auto')
+  const boundaries: TalkBoundary[] = await strategy.segment({
+    chapters: input.chapters,
+    transcription: input.transcription,
+    videoTitle: input.videoTitle,
+    llm: ctx.llm,
+  })
 
   const out: SegmentResult['talkIds'] = []
   for (let i = 0; i < boundaries.length; i++) {
@@ -48,7 +54,7 @@ export async function runSegment(ctx: StepContext, input: SegmentInput): Promise
       rawText: text,
       utterances: slice,
     })
-    out.push({ talkId: talk.id, transcriptId: transcript.id, boundary: b, text })
+    out.push({ talkId: talk.id, transcriptId: transcript.id, boundary: b, text, utterances: slice })
   }
 
   return { talkIds: out }

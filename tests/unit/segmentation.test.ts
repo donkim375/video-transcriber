@@ -1,7 +1,19 @@
 import { describe, it, expect } from 'vitest'
-import { boundariesFromChapters, sliceUtterancesByBoundary } from '../../src/services/segmentation.js'
+import {
+  boundariesFromChapters,
+  sliceUtterancesByBoundary,
+  resolveSegmentationStrategy,
+} from '../../src/services/segmentation.js'
 import { sampleChapters } from '../fixtures/chapters.js'
 import { sampleUtterances } from '../fixtures/utterances.js'
+import { MockLLMService } from '../mocks/llm.mock.js'
+import type { TranscriptionResult } from '../../src/types/index.js'
+
+const transcription: TranscriptionResult = {
+  assemblyaiId: 'tx-fixture',
+  rawText: 'Welcome to the conference. Our first talk is by Alice.',
+  utterances: sampleUtterances,
+}
 
 describe('boundariesFromChapters', () => {
   it('maps each chapter to a TalkBoundary', () => {
@@ -42,5 +54,102 @@ describe('sliceUtterancesByBoundary', () => {
   it('uses utterance start as inclusion criterion', () => {
     const slice = sliceUtterancesByBoundary(sampleUtterances, { title: 'X', speaker: '', startMs: 0, endMs: 5000 })
     expect(slice).toHaveLength(2)
+  })
+})
+
+describe('resolveSegmentationStrategy', () => {
+  it('returns a strategy whose name matches the requested content type', () => {
+    expect(resolveSegmentationStrategy('single_speaker').name).toBe('single_speaker')
+    expect(resolveSegmentationStrategy('conference').name).toBe('conference')
+    expect(resolveSegmentationStrategy('podcast_interview').name).toBe('podcast_interview')
+    expect(resolveSegmentationStrategy('auto').name).toBe('auto')
+  })
+})
+
+describe('SingleSpeakerStrategy', () => {
+  it('returns one boundary spanning [0, max(endMs)] using videoTitle', async () => {
+    const strategy = resolveSegmentationStrategy('single_speaker')
+    const boundaries = await strategy.segment({
+      chapters: [],
+      transcription,
+      videoTitle: 'My Talk',
+      llm: new MockLLMService(),
+    })
+    expect(boundaries).toHaveLength(1)
+    expect(boundaries[0]).toMatchObject({ title: 'My Talk', speaker: '', startMs: 0, endMs: 24000 })
+  })
+
+  it('falls back to "Full Talk" when videoTitle is missing', async () => {
+    const strategy = resolveSegmentationStrategy('single_speaker')
+    const [b] = await strategy.segment({ chapters: [], transcription, llm: new MockLLMService() })
+    expect(b!.title).toBe('Full Talk')
+  })
+
+  it('does not call the LLM', async () => {
+    const llm = new MockLLMService()
+    await resolveSegmentationStrategy('single_speaker').segment({
+      chapters: sampleChapters, transcription, llm,
+    })
+    expect(llm.segmentCalls).toHaveLength(0)
+  })
+})
+
+describe('ConferenceStrategy', () => {
+  it('uses chapters when present', async () => {
+    const llm = new MockLLMService()
+    const boundaries = await resolveSegmentationStrategy('conference').segment({
+      chapters: sampleChapters, transcription, llm,
+    })
+    expect(boundaries).toHaveLength(3)
+    expect(boundaries[1]).toMatchObject({ title: 'Alice on Vectors', speaker: '', startMs: 5000, endMs: 13000 })
+    expect(llm.segmentCalls).toHaveLength(0)
+  })
+
+  it('falls back to LLM when no chapters', async () => {
+    const llmBoundaries = [{ title: 'AI talk', speaker: 'A', startMs: 0, endMs: 24000 }]
+    const llm = new MockLLMService(llmBoundaries)
+    const boundaries = await resolveSegmentationStrategy('conference').segment({
+      chapters: [], transcription, llm,
+    })
+    expect(llm.segmentCalls).toHaveLength(1)
+    expect(boundaries).toEqual(llmBoundaries)
+  })
+})
+
+describe('PodcastInterviewStrategy', () => {
+  it('returns a single boundary with "Episode" fallback', async () => {
+    const boundaries = await resolveSegmentationStrategy('podcast_interview').segment({
+      chapters: [], transcription, llm: new MockLLMService(),
+    })
+    expect(boundaries).toHaveLength(1)
+    expect(boundaries[0]).toMatchObject({ title: 'Episode', startMs: 0, endMs: 24000 })
+  })
+
+  it('uses videoTitle when provided', async () => {
+    const [b] = await resolveSegmentationStrategy('podcast_interview').segment({
+      chapters: [], transcription, videoTitle: 'Ep 42: Vectors', llm: new MockLLMService(),
+    })
+    expect(b!.title).toBe('Ep 42: Vectors')
+  })
+})
+
+describe('AutoStrategy', () => {
+  it('routes to conference behaviour when YouTube chapters are present', async () => {
+    const llm = new MockLLMService()
+    const boundaries = await resolveSegmentationStrategy('auto').segment({
+      chapters: sampleChapters, transcription, videoTitle: 'My Talk', llm,
+    })
+    expect(boundaries).toHaveLength(3)
+    expect(llm.segmentCalls).toHaveLength(0)
+  })
+
+  it('routes to single-speaker behaviour when no chapters', async () => {
+    const llm = new MockLLMService()
+    const boundaries = await resolveSegmentationStrategy('auto').segment({
+      chapters: [], transcription, videoTitle: 'My Talk', llm,
+    })
+    expect(boundaries).toHaveLength(1)
+    expect(boundaries[0]).toMatchObject({ title: 'My Talk', startMs: 0, endMs: 24000 })
+    expect(llm.segmentCalls).toHaveLength(0)
   })
 })

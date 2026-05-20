@@ -87,6 +87,7 @@ describe('pipeline worker (pg-boss)', () => {
     await boss.send(QUEUE_PIPELINE, {
       sourceVideoId: sv.id,
       youtubeUrl: 'https://youtu.be/abc',
+      contentType: 'conference',
     })
 
     const deadline = Date.now() + 20_000

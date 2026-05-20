@@ -65,7 +65,7 @@ describe('runSegment', () => {
       youtubeUrl: 'https://youtu.be/abc',
     }
     const chapters = [{ title: 'Vectors by Alice', startMs: 5000, endMs: 13000 }]
-    const result = await runSegment(ctx, { transcription: transcription(), chapters })
+    const result = await runSegment(ctx, { transcription: transcription(), chapters, contentType: 'conference' })
 
     expect(result.talkIds).toHaveLength(1)
     expect(result.talkIds[0]!.boundary.title).toBe('Vectors')
@@ -109,7 +109,7 @@ describe('runSegment', () => {
       youtubeUrl: 'https://youtu.be/xyz',
     }
 
-    const result = await runSegment(ctx, { transcription: transcription(), chapters: [] })
+    const result = await runSegment(ctx, { transcription: transcription(), chapters: [], contentType: 'conference' })
 
     expect(result.talkIds).toHaveLength(1)
     expect(result.talkIds[0]!.boundary.title).toBe('LLM Talk')

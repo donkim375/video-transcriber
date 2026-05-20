@@ -9,10 +9,12 @@ import type {
 type ClientLike = {
   files: { upload(p: string): Promise<string> }
   transcripts: {
-    submit(p: { audio_url: string; speaker_labels: boolean }): Promise<{ id: string }>
+    submit(p: { audio_url: string; speaker_labels: boolean; speech_models?: string[] }): Promise<{ id: string }>
     get(id: string): Promise<any>
   }
 }
+
+const SPEECH_MODELS = ['universal-3-pro'] as const
 
 const STATUS_MAP: Record<string, TranscriptionStatusValue> = {
   queued: 'queued',
@@ -30,7 +32,11 @@ export class AssemblyAIService implements ITranscriptionService {
 
   async submit(audioPath: string): Promise<{ assemblyaiId: string }> {
     const audio_url = await this.client.files.upload(audioPath)
-    const { id } = await this.client.transcripts.submit({ audio_url, speaker_labels: true })
+    const { id } = await this.client.transcripts.submit({
+      audio_url,
+      speaker_labels: true,
+      speech_models: [...SPEECH_MODELS],
+    })
     return { assemblyaiId: id }
   }
 
