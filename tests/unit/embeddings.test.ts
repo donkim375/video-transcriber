@@ -32,4 +32,9 @@ describe('OpenAIEmbeddingService.embed', () => {
     await expect(svc.embed([])).resolves.toEqual([])
     expect(client.embeddings.create).not.toHaveBeenCalled()
   })
+
+  it('throws when batchSize is < 1', () => {
+    const client = fakeOpenAI([[0.1]])
+    expect(() => new OpenAIEmbeddingService(client as any, { batchSize: 0 })).toThrow(/batchSize/)
+  })
 })

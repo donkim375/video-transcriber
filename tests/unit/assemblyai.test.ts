@@ -44,6 +44,16 @@ describe('AssemblyAIService.getStatus', () => {
     expect(status.status).toBe('error')
     expect(status.errorMessage).toBe('bad audio')
   })
+
+  it('emits errorMessage for unrecognized assemblyai status', async () => {
+    const client = makeFakeClient({
+      transcripts: { get: vi.fn(async () => ({ id: 'tx-1', status: 'frobnicating' })) },
+    })
+    const svc = new AssemblyAIService(client as any)
+    const status = await svc.getStatus('tx-1')
+    expect(status.status).toBe('error')
+    expect(status.errorMessage).toBe('Unknown AssemblyAI status: frobnicating')
+  })
 })
 
 describe('AssemblyAIService.getResult', () => {

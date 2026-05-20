@@ -52,6 +52,7 @@ describe('YouTubeService.downloadAudio', () => {
     const cmd = exec.mock.calls[0]![0] as string
     expect(cmd).toContain('yt-dlp')
     expect(cmd).toContain('-x')
+    expect(cmd).toContain('--audio-format mp3')
     expect(cmd).toContain('/tmp/abc.mp3')
     expect(cmd).toContain('https://youtu.be/abc')
   })

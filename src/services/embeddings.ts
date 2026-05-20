@@ -19,6 +19,9 @@ export class OpenAIEmbeddingService implements IEmbeddingService {
   constructor(private client: ClientLike, opts: EmbeddingOptions = {}) {
     this.model = opts.model ?? 'text-embedding-3-small'
     this.batchSize = opts.batchSize ?? 128
+    if (this.batchSize < 1) {
+      throw new Error(`batchSize must be >= 1 (got ${this.batchSize})`)
+    }
   }
 
   static fromApiKey(apiKey: string, opts: EmbeddingOptions = {}): OpenAIEmbeddingService {

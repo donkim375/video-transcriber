@@ -34,6 +34,12 @@ describe('ClaudeLLMService.segmentTranscript', () => {
     const svc = new ClaudeLLMService(client as any)
     await expect(svc.segmentTranscript('x')).rejects.toThrow(/JSON/)
   })
+
+  it('throws when JSON array contains malformed boundaries', async () => {
+    const client = fakeAnthropic(JSON.stringify([{ title: 'A' }])) // missing speaker, startMs, endMs
+    const svc = new ClaudeLLMService(client as any)
+    await expect(svc.segmentTranscript('x')).rejects.toThrow(/malformed/i)
+  })
 })
 
 describe('ClaudeLLMService.summarizeTalk', () => {

@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { z } from 'zod'
 import type { ILLMService } from '../interfaces/llm.js'
 import type { TalkBoundary } from '../types/index.js'
 
@@ -9,6 +10,14 @@ type ClientLike = {
 }
 
 const MODEL = 'claude-sonnet-4-6'
+
+const BoundarySchema = z.object({
+  title: z.string(),
+  speaker: z.string(),
+  startMs: z.number(),
+  endMs: z.number(),
+})
+const BoundaryArraySchema = z.array(BoundarySchema)
 
 export class ClaudeLLMService implements ILLMService {
   constructor(private client: ClientLike) {}
@@ -35,8 +44,12 @@ export class ClaudeLLMService implements ILLMService {
     const txt = await this.invoke(sys, `Transcript:\n${transcript}`, 4096)
     const match = txt.match(/\[[\s\S]*\]/)
     if (!match) throw new Error('Claude segmentation: no JSON array in response')
-    const parsed = JSON.parse(match[0]) as TalkBoundary[]
-    return parsed
+    const raw = JSON.parse(match[0])
+    const result = BoundaryArraySchema.safeParse(raw)
+    if (!result.success) {
+      throw new Error(`Claude segmentation: malformed boundary array: ${result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ')}`)
+    }
+    return result.data
   }
 
   async summarizeTalk(transcript: string): Promise<string> {

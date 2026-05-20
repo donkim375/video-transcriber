@@ -36,9 +36,14 @@ export class AssemblyAIService implements ITranscriptionService {
 
   async getStatus(transcriptionId: string): Promise<TranscriptionStatus> {
     const t = await this.client.transcripts.get(transcriptionId)
-    const status = STATUS_MAP[String(t.status)] ?? 'error'
+    const rawStatus = String(t.status)
+    const mapped = STATUS_MAP[rawStatus]
+    const status: TranscriptionStatusValue = mapped ?? 'error'
     const out: TranscriptionStatus = { id: t.id, status }
-    if (status === 'error' && t.error) out.errorMessage = String(t.error)
+    if (status === 'error') {
+      if (t.error) out.errorMessage = String(t.error)
+      else if (!mapped) out.errorMessage = `Unknown AssemblyAI status: ${rawStatus}`
+    }
     return out
   }
 
