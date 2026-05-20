@@ -28,7 +28,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     const issues = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')
     throw new Error(`Invalid config: ${issues}`)
   }
-  return {
+  const config = {
     supabaseUrl: parsed.data.SUPABASE_URL,
     supabaseServiceRoleKey: parsed.data.SUPABASE_SERVICE_ROLE_KEY,
     databaseUrl: parsed.data.SUPABASE_CONNECTION_STRING,
@@ -38,4 +38,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     port: parsed.data.PORT,
     nodeEnv: parsed.data.NODE_ENV,
   }
+
+  // Scrub secrets from process.env so npm packages loaded after this point cannot read them
+  for (const key of ['ASSEMBLYAI_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY',
+                     'SUPABASE_CONNECTION_STRING', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']) {
+    delete process.env[key]
+  }
+
+  return config
 }
