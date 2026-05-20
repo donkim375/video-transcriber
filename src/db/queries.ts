@@ -143,3 +143,53 @@ export async function insertChunk(pool: pg.Pool, c: ChunkInsert): Promise<{ id: 
   )
   return { id: rows[0].id }
 }
+
+export interface MatchChunkRow {
+  id: string
+  text: string
+  talk_id: string
+  start_ms: number
+  end_ms: number
+  similarity: number
+}
+
+export async function matchChunks(
+  pool: pg.Pool,
+  queryEmbedding: number[],
+  matchCount: number,
+  filterTalkId?: string
+): Promise<MatchChunkRow[]> {
+  const { rows } = await pool.query(
+    `select * from match_chunks($1::vector, $2, $3)`,
+    [toPgVector(queryEmbedding), matchCount, filterTalkId ?? null]
+  )
+  return rows
+}
+
+export interface FullTextChunkRow {
+  id: string
+  text: string
+  talk_id: string
+  start_ms: number | null
+  end_ms: number | null
+  rank: number
+}
+
+export async function searchChunksFullText(
+  pool: pg.Pool,
+  query: string,
+  limit: number,
+  filterTalkId?: string
+): Promise<FullTextChunkRow[]> {
+  const { rows } = await pool.query(
+    `select id, text, talk_id, start_ms, end_ms,
+            ts_rank(to_tsvector('english', text), plainto_tsquery('english', $1)) as rank
+       from chunks
+      where to_tsvector('english', text) @@ plainto_tsquery('english', $1)
+        and ($3::uuid is null or talk_id = $3)
+      order by rank desc
+      limit $2`,
+    [query, limit, filterTalkId ?? null]
+  )
+  return rows
+}
