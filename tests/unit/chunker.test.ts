@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { chunkText, chunkUtterances } from '../../src/services/chunker.js'
 import type { Utterance } from '../../src/types/index.js'
+import { utterancesWithWords } from '../fixtures/utterances-with-words.js'
 
 describe('chunkText', () => {
   it('returns a single chunk for short input', () => {
@@ -94,5 +95,14 @@ describe('chunkUtterances', () => {
     expect(chunks[0]!.tokenCount).toBeGreaterThan(0)
     expect(chunks[0]!.startMs).toBe(0)
     expect(chunks[0]!.endMs).toBe(3000)
+  })
+
+  it('derives per-sentence spans from words when present', () => {
+    // Tiny token budget forces each sentence into its own chunk.
+    const chunks = chunkUtterances(utterancesWithWords, { targetTokens: 5, overlapTokens: 0 })
+    expect(chunks).toHaveLength(3)
+    expect(chunks[0]).toMatchObject({ text: 'Hello world.',           startMs: 0,    endMs: 1000 })
+    expect(chunks[1]).toMatchObject({ text: 'This is a test.',        startMs: 1500, endMs: 4000 })
+    expect(chunks[2]).toMatchObject({ text: 'Another sentence here.', startMs: 5000, endMs: 7000 })
   })
 })

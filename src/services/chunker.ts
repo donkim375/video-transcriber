@@ -1,5 +1,5 @@
 import { encoding_for_model } from 'tiktoken'
-import type { Utterance } from '../types/index.js'
+import type { Utterance, Word } from '../types/index.js'
 
 export interface Chunk {
   chunkIndex: number
@@ -18,6 +18,47 @@ export interface ChunkOptions {
 }
 
 const SENTENCE_RE = /[^.!?]+[.!?]+(?:\s+|$)/g
+
+function normalize(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+interface AlignResult {
+  startMs: number
+  endMs: number
+  nextCursor: number
+}
+
+function alignSentenceToWords(
+  sentence: string,
+  words: Word[],
+  cursor: number,
+): AlignResult | null {
+  const sentenceTokens = sentence.split(/\s+/).map(normalize).filter(Boolean)
+  if (sentenceTokens.length === 0 || cursor >= words.length) return null
+
+  let startMs: number | null = null
+  let endMs: number | null = null
+  let matched = 0
+  let i = cursor
+
+  while (i < words.length && matched < sentenceTokens.length) {
+    const w = normalize(words[i]!.text)
+    if (w && w === sentenceTokens[matched]) {
+      if (startMs === null) startMs = words[i]!.startMs
+      endMs = words[i]!.endMs
+      matched++
+    }
+    i++
+  }
+
+  if (startMs === null || endMs === null) return null
+  // Require at least 50% of sentence tokens to have matched. Anything less is
+  // likely a desync between utterance.text and utterance.words — fall back.
+  if (matched * 2 < sentenceTokens.length) return null
+
+  return { startMs, endMs, nextCursor: i }
+}
 
 function splitSentences(text: string): string[] {
   const matches = text.match(SENTENCE_RE)
@@ -62,7 +103,7 @@ function accumulate(
     let carryTokens = 0
     for (let i = buffer.length - 1; i >= 0; i--) {
       const s = buffer[i]!
-      if (carryTokens + s.tokens > opts.overlapTokens && carry.length > 0) break
+      if (carryTokens + s.tokens > opts.overlapTokens) break
       carry.unshift(s)
       carryTokens += s.tokens
     }
@@ -112,8 +153,19 @@ export function chunkUtterances(utterances: Utterance[], opts: ChunkOptions): Ti
     const items: TimedSentence[] = []
     for (const u of utterances) {
       const sentences = splitSentences(u.text)
+      let cursor = 0
       for (const s of sentences) {
-        items.push({ text: s, tokens: countTokens(s), startMs: u.startMs, endMs: u.endMs })
+        let startMs: number | null = u.startMs
+        let endMs: number | null = u.endMs
+        if (u.words && u.words.length > 0) {
+          const aligned = alignSentenceToWords(s, u.words, cursor)
+          if (aligned) {
+            startMs = aligned.startMs
+            endMs = aligned.endMs
+            cursor = aligned.nextCursor
+          }
+        }
+        items.push({ text: s, tokens: countTokens(s), startMs, endMs })
       }
     }
     return accumulate(items, opts)
