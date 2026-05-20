@@ -144,8 +144,10 @@ export function chunkText(text: string, opts: ChunkOptions): Chunk[] {
   }
 }
 
-// Utterance-aware variant: each sentence inherits the timestamps of the utterance
-// it came from. Chunk timestamps are min(startMs) and max(endMs) over the chunk's sentences.
+// Utterance-aware variant. When `utterance.words` is present, per-sentence spans
+// are derived by aligning sentence tokens against the words array. Otherwise the
+// sentence inherits its parent utterance's span. Chunk spans are min(startMs) /
+// max(endMs) over the chunk's sentences.
 export function chunkUtterances(utterances: Utterance[], opts: ChunkOptions): TimedChunk[] {
   const enc = encoding_for_model('text-embedding-3-small')
   const countTokens = (s: string) => enc.encode(s).length
