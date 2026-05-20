@@ -107,7 +107,7 @@ while :; do
 done
 ```
 
-**Expected step sequence** (visible in Terminal A worker logs and in the polled `status` field):
+**Expected step sequence** (visible in Terminal A worker logs; the polled `status` field is sampled every 5s, so fast steps like `segmenting` and `summarizing` are often skipped over):
 
 ```
 downloading → transcribing → segmenting → embedding → summarizing → ready
@@ -146,9 +146,9 @@ Terminal state is `ready` on success or `error` on failure. If `error`, hit `GET
    where t.source_video_id = '$SV_ID';"
 ```
 
-**Expected:** `null_starts = 0`, `null_ends = 0`, `min_start = 0` (or close to it), `max_end` ≈ video duration in ms.
+**Expected:** `null_starts = 0`, `null_ends = 0`, `min_start` close to `0`, `max_end` ≈ video duration in ms, and `distinct_spans` ≈ `total` (one span per chunk).
 
-**Note on `distinct_spans`:** AssemblyAI sometimes returns the entire video as a single utterance (especially for monologues). When that happens, every chunk inherits the same `(start_ms, end_ms)` span and `distinct_spans = 1` — this is **not a bug**. It's a known limitation noted under "Future Work" in [`docs/superpowers/specs/2026-05-20-segmentation-and-chunk-timestamps-spec.md`](./superpowers/specs/2026-05-20-segmentation-and-chunk-timestamps-spec.md). When AssemblyAI returns multiple utterances, `distinct_spans` will be `> 1`.
+**Note on `distinct_spans`:** Per-sentence spans are derived from AssemblyAI's word-level timestamps (see [`docs/superpowers/specs/2026-05-21-word-level-chunk-timestamps-design.md`](./superpowers/specs/2026-05-21-word-level-chunk-timestamps-design.md)). Even when AssemblyAI returns the whole video as a single utterance — common for monologues — sentences inside that utterance now get distinct spans, so `distinct_spans` should be `> 1` and typically close to `total`. If `distinct_spans = 1` on a multi-minute video, alignment is failing for every sentence; investigate the AssemblyAI response shape (missing `words[]`?) rather than treating it as expected.
 
 ---
 
@@ -191,7 +191,7 @@ curl -sX POST http://localhost:3000/search \
       sample: [.results[] | {chunk_id, start_ms, end_ms}]
     }'
 ```
-`null_starts` / `null_ends` must be `0`. `distinct_spans` may be `1` (see note in Step 6).
+`null_starts` / `null_ends` must be `0`. `distinct_spans` should be `> 1` on any multi-minute video (see Step 6 note).
 
 ---
 
@@ -201,7 +201,6 @@ curl -sX POST http://localhost:3000/search \
 |---|---|
 | ✅ Talk rows per video | Exactly one for `single_speaker` (more for `conference` / `podcast_interview`) |
 | ✅ Null timestamps in chunks | Zero `null` `start_ms` / `end_ms` |
+| ✅ Chunk span granularity | `distinct_spans > 1` on multi-minute videos (typically ≈ chunk count) |
 | ✅ Search results | Every result has populated `start_ms` and `end_ms` |
 | ✅ API response | Submission echoes `content_type`; `/videos/:id` exposes the `talks` array |
-
-**Expected-not-a-bug:** when AssemblyAI returns a single utterance, all chunks share one `(start_ms, end_ms)` span (`distinct_spans = 1`). See Step 6 and the spec's "Future Work" section.

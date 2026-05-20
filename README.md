@@ -65,6 +65,8 @@ Integration tests (Docker Postgres):
 npm run test:integration
 ```
 
+> **Stop any dev/worker processes pointed at the test DB first.** Integration and smoke tests enqueue jobs onto `pg-boss` and rely on the in-test mock worker dequeuing them. If `npm run dev:worker` (or any other pipeline worker) is connected to the same Postgres at `localhost:54329`, it will race the test worker and drive jobs through real `yt-dlp` / AssemblyAI, failing with confusing errors like `Unsupported URL` or `Pipeline errored`.
+
 All:
 
 ```bash

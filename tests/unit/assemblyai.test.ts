@@ -72,4 +72,41 @@ describe('AssemblyAIService.getResult', () => {
     const svc = new AssemblyAIService(client as any)
     await expect(svc.getResult('tx-1')).rejects.toThrow(/not completed/i)
   })
+
+  it('passes through utterance words when present', async () => {
+    const client = makeFakeClient({
+      transcripts: {
+        get: vi.fn(async () => ({
+          id: 'tx-1',
+          status: 'completed',
+          text: 'Hello world.',
+          utterances: [
+            {
+              speaker: 'A',
+              text: 'Hello world.',
+              start: 0,
+              end: 1000,
+              words: [
+                { text: 'Hello',  start: 0,   end: 500 },
+                { text: 'world.', start: 500, end: 1000 },
+              ],
+            },
+          ],
+        })),
+      },
+    })
+    const svc = new AssemblyAIService(client as any)
+    const result = await svc.getResult('tx-1')
+    expect(result.utterances[0]!.words).toEqual([
+      { text: 'Hello',  startMs: 0,   endMs: 500 },
+      { text: 'world.', startMs: 500, endMs: 1000 },
+    ])
+  })
+
+  it('leaves words undefined when AssemblyAI omits the field', async () => {
+    const client = makeFakeClient()  // default makeFakeClient returns utterances without `words`
+    const svc = new AssemblyAIService(client as any)
+    const result = await svc.getResult('tx-1')
+    expect(result.utterances[0]!.words).toBeUndefined()
+  })
 })
