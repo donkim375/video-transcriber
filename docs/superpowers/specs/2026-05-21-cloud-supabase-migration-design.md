@@ -47,7 +47,7 @@ The local dev path (Docker Postgres + keychain + `run_local`) stays intact and u
                   │    SUPABASE_CONNECTION_STRING                   │
                   │    OPENAI_API_KEY                               │
                   │    ANTHROPIC_API_KEY                            │
-                  │    ASSEMBLYAI_API_KEY  (worker only)            │
+                  │    ASSEMBLYAI_API_KEY                           │
                   │    NODE_ENV=production                          │
                   │    PORT  (api only — Railway injects)           │
                   └───────────────────────┬─────────────────────────┘
@@ -68,8 +68,12 @@ The local dev path (Docker Postgres + keychain + `run_local`) stays intact and u
 ### Notes on the topology
 
 - **Two services, one Railway project.** Each service has its own env-var namespace. We set the
-  *minimum* secrets per service (the api never calls AssemblyAI, so it does not get the AssemblyAI
-  key) to limit blast radius if one service's logs leak.
+  full secret set on both services. A per-service least-privilege split was considered (e.g.
+  withhold `ASSEMBLYAI_API_KEY` from the api) but `loadConfig` in `src/config.ts` requires
+  `ASSEMBLYAI_API_KEY` at boot and `src/index.ts` constructs `AssemblyAIService` during api
+  startup, so withholding the key would crash the api. A code change to make the key optional
+  is out of scope for this migration; both services share the Railway dashboard anyway, so the
+  marginal blast-radius benefit is small.
 - **Worker has no public URL.** No inbound attack surface; only outbound calls to AssemblyAI,
   OpenAI, Anthropic, YouTube, and the Supabase Postgres.
 - **pg-boss runs inside the worker process** — polls Postgres for jobs. No separate queue
@@ -154,12 +158,16 @@ that print plaintext, local subprocesses that inherit prod env, and accidental l
 
 ### What gets set where, per service
 
+Both services receive the full set. The api never *calls* AssemblyAI at runtime, but
+`loadConfig` requires `ASSEMBLYAI_API_KEY` at boot and `src/index.ts` constructs the
+service at startup — withholding the key would crash the api.
+
 | Variable | api | worker | Source |
 |---|:-:|:-:|---|
 | `SUPABASE_CONNECTION_STRING` | ✅ | ✅ | Supabase → Project Settings → Database → URI (direct connection, port 5432). Append `?sslmode=require`. |
 | `OPENAI_API_KEY` | ✅ | ✅ | OpenAI console. |
 | `ANTHROPIC_API_KEY` | ✅ | ✅ | Anthropic console. |
-| `ASSEMBLYAI_API_KEY` | ❌ | ✅ | AssemblyAI dashboard. Only worker calls AssemblyAI. |
+| `ASSEMBLYAI_API_KEY` | ✅ | ✅ | AssemblyAI dashboard. |
 | `NODE_ENV=production` | ✅ | ✅ | Static. |
 | `PORT` | (Railway-injected) | n/a | Railway sets this automatically for services with a public URL. |
 

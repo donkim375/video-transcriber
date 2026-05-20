@@ -129,11 +129,18 @@ use the Railway CLI in this session.**
    | `SUPABASE_CONNECTION_STRING` | Paste the URI you assembled in Part 1.5 |
    | `OPENAI_API_KEY` | Your OpenAI key (`sk-...`) |
    | `ANTHROPIC_API_KEY` | Your Anthropic key (`sk-ant-...`) |
+   | `ASSEMBLYAI_API_KEY` | Your AssemblyAI key |
    | `NODE_ENV` | `production` |
 
-2. Do **not** add `ASSEMBLYAI_API_KEY` to the api service — the api never calls AssemblyAI.
-3. Do **not** add `PORT` — Railway injects it automatically because the api service has a
+2. Do **not** add `PORT` — Railway injects it automatically because the api service has a
    public URL.
+
+> **Why does the api need `ASSEMBLYAI_API_KEY` if it never calls AssemblyAI at request time?**
+> Because `loadConfig` (`src/config.ts`) validates the key as required at boot, and
+> `src/index.ts` constructs an `AssemblyAIService` instance during startup as part of the
+> dependency-injection wiring. A per-service split was considered and ruled out — making
+> the key optional would require code changes outside the scope of this migration, and
+> both services share the same Railway dashboard anyway.
 
 #### 2.4.2 — worker service
 
@@ -144,13 +151,12 @@ use the Railway CLI in this session.**
    | `SUPABASE_CONNECTION_STRING` | Same URI as in 2.4.1 |
    | `OPENAI_API_KEY` | Same as api |
    | `ANTHROPIC_API_KEY` | Same as api |
-   | `ASSEMBLYAI_API_KEY` | Your AssemblyAI key |
+   | `ASSEMBLYAI_API_KEY` | Same as api |
    | `NODE_ENV` | `production` |
 
-> **Why two separate copies of the same secret?** Railway scopes variables per service.
-> If the api service is ever compromised (e.g. a malicious dependency), the attacker can
-> only read the keys the api has — they cannot read AssemblyAI. Minimum-privilege per
-> service.
+> **Why duplicate the same values across services?** Railway scopes variables per
+> service, so each service has its own copy. Both services need all four keys per the
+> reasoning in 2.4.1.
 
 ### 2.5 Expose the api publicly
 
