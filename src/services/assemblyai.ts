@@ -63,6 +63,13 @@ export class AssemblyAIService implements ITranscriptionService {
       text: String(u.text ?? ''),
       startMs: Number(u.start ?? 0),
       endMs: Number(u.end ?? 0),
+      words: Array.isArray(u.words)
+        ? u.words.map((w: any) => ({
+            text: String(w.text ?? ''),
+            startMs: Number(w.start ?? 0),
+            endMs: Number(w.end ?? 0),
+          }))
+        : undefined,
     }))
     return {
       assemblyaiId: t.id,

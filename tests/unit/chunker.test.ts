@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { chunkText, chunkUtterances } from '../../src/services/chunker.js'
 import type { Utterance } from '../../src/types/index.js'
+import { utterancesWithWords } from '../fixtures/utterances-with-words.js'
 
 describe('chunkText', () => {
   it('returns a single chunk for short input', () => {
@@ -94,5 +95,70 @@ describe('chunkUtterances', () => {
     expect(chunks[0]!.tokenCount).toBeGreaterThan(0)
     expect(chunks[0]!.startMs).toBe(0)
     expect(chunks[0]!.endMs).toBe(3000)
+  })
+
+  it('derives per-sentence spans from words when present', () => {
+    // Tiny token budget forces each sentence into its own chunk.
+    const chunks = chunkUtterances(utterancesWithWords, { targetTokens: 5, overlapTokens: 0 })
+    expect(chunks).toHaveLength(3)
+    expect(chunks[0]).toMatchObject({ text: 'Hello world.',           startMs: 0,    endMs: 1000 })
+    expect(chunks[1]).toMatchObject({ text: 'This is a test.',        startMs: 1500, endMs: 4000 })
+    expect(chunks[2]).toMatchObject({ text: 'Another sentence here.', startMs: 5000, endMs: 7000 })
+  })
+
+  it('falls back to utterance span when words are absent', () => {
+    // Note: same fixture shape as the words case but with `words` omitted.
+    const utts: Utterance[] = [
+      { speaker: 'A', text: 'Hello world. This is a test.', startMs: 0,    endMs: 4000 },
+      { speaker: 'A', text: 'Another sentence here.',       startMs: 5000, endMs: 7000 },
+    ]
+    const chunks = chunkUtterances(utts, { targetTokens: 5, overlapTokens: 0 })
+    expect(chunks).toHaveLength(3)
+    expect(chunks[0]).toMatchObject({ text: 'Hello world.',           startMs: 0,    endMs: 4000 })
+    expect(chunks[1]).toMatchObject({ text: 'This is a test.',        startMs: 0,    endMs: 4000 })
+    expect(chunks[2]).toMatchObject({ text: 'Another sentence here.', startMs: 5000, endMs: 7000 })
+  })
+
+  it('aligns sentences containing contractions, decimals, and punctuation', () => {
+    const utts: Utterance[] = [
+      {
+        speaker: 'A',
+        text: "It's 3.14 percent.",
+        startMs: 0,
+        endMs: 2000,
+        words: [
+          { text: "It's",     startMs: 0,    endMs: 400  },
+          { text: '3.14',     startMs: 400,  endMs: 1200 },
+          { text: 'percent.', startMs: 1200, endMs: 2000 },
+        ],
+      },
+    ]
+    const chunks = chunkUtterances(utts, { targetTokens: 50, overlapTokens: 0 })
+    expect(chunks).toHaveLength(1)
+    expect(chunks[0]).toMatchObject({ startMs: 0, endMs: 2000 })
+  })
+
+  it('falls back per-sentence on alignment failure without poisoning subsequent sentences', () => {
+    // Utterance text has two sentences. The first sentence ("Foo bar baz quux.")
+    // shares no tokens with the words array — alignment must fail and fall back
+    // to the utterance span (0, 5000). The second sentence ("Hello world.") aligns.
+    const utts: Utterance[] = [
+      {
+        speaker: 'A',
+        text: 'Foo bar baz quux. Hello world.',
+        startMs: 0,
+        endMs: 5000,
+        words: [
+          { text: 'Hello',  startMs: 3000, endMs: 3500 },
+          { text: 'world.', startMs: 3500, endMs: 5000 },
+        ],
+      },
+    ]
+    const chunks = chunkUtterances(utts, { targetTokens: 5, overlapTokens: 0 })
+    expect(chunks).toHaveLength(2)
+    // First sentence: alignment failed (0/4 tokens match) → fallback to utterance span.
+    expect(chunks[0]).toMatchObject({ text: 'Foo bar baz quux.', startMs: 0,    endMs: 5000 })
+    // Second sentence: aligned cleanly.
+    expect(chunks[1]).toMatchObject({ text: 'Hello world.',      startMs: 3000, endMs: 5000 })
   })
 })

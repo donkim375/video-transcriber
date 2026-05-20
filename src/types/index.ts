@@ -6,11 +6,18 @@ export interface VideoMetadata {
   chapters: { title: string; startMs: number; endMs: number }[]
 }
 
+export interface Word {
+  text: string
+  startMs: number
+  endMs: number
+}
+
 export interface Utterance {
   speaker: string
   text: string
   startMs: number
   endMs: number
+  words?: Word[]
 }
 
 export interface TranscriptionResult {
