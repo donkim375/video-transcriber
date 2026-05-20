@@ -1,0 +1,62 @@
+import { AssemblyAI } from 'assemblyai'
+import type { ITranscriptionService } from '../interfaces/assemblyai.js'
+import type {
+  TranscriptionResult,
+  TranscriptionStatus,
+  TranscriptionStatusValue,
+} from '../types/index.js'
+
+type ClientLike = {
+  files: { upload(p: string): Promise<string> }
+  transcripts: {
+    submit(p: { audio_url: string; speaker_labels: boolean }): Promise<{ id: string }>
+    get(id: string): Promise<any>
+  }
+}
+
+const STATUS_MAP: Record<string, TranscriptionStatusValue> = {
+  queued: 'queued',
+  processing: 'processing',
+  completed: 'completed',
+  error: 'error',
+}
+
+export class AssemblyAIService implements ITranscriptionService {
+  constructor(private client: ClientLike) {}
+
+  static fromApiKey(apiKey: string): AssemblyAIService {
+    return new AssemblyAIService(new AssemblyAI({ apiKey }) as unknown as ClientLike)
+  }
+
+  async submit(audioPath: string): Promise<{ assemblyaiId: string }> {
+    const audio_url = await this.client.files.upload(audioPath)
+    const { id } = await this.client.transcripts.submit({ audio_url, speaker_labels: true })
+    return { assemblyaiId: id }
+  }
+
+  async getStatus(transcriptionId: string): Promise<TranscriptionStatus> {
+    const t = await this.client.transcripts.get(transcriptionId)
+    const status = STATUS_MAP[String(t.status)] ?? 'error'
+    const out: TranscriptionStatus = { id: t.id, status }
+    if (status === 'error' && t.error) out.errorMessage = String(t.error)
+    return out
+  }
+
+  async getResult(transcriptionId: string): Promise<TranscriptionResult> {
+    const t = await this.client.transcripts.get(transcriptionId)
+    if (t.status !== 'completed') {
+      throw new Error(`Transcript ${transcriptionId} not completed (status: ${t.status})`)
+    }
+    const utterances = (t.utterances ?? []).map((u: any) => ({
+      speaker: String(u.speaker ?? ''),
+      text: String(u.text ?? ''),
+      startMs: Number(u.start ?? 0),
+      endMs: Number(u.end ?? 0),
+    }))
+    return {
+      assemblyaiId: t.id,
+      rawText: String(t.text ?? ''),
+      utterances,
+    }
+  }
+}
