@@ -1,0 +1,33 @@
+{
+  "name": "video-transcriber",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "dev:worker": "tsx watch src/worker.ts",
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "docker compose -f docker-compose.test.yml up -d && vitest run --config vitest.integration.config.ts",
+    "test:all": "npm test && npm run test:integration",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.30.0",
+    "assemblyai": "^4.7.0",
+    "fastify": "^4.28.0",
+    "openai": "^4.65.0",
+    "pg": "^8.13.0",
+    "pg-boss": "^10.1.0",
+    "tiktoken": "^1.0.17",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "@types/pg": "^8.11.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
