@@ -34,12 +34,12 @@ The local dev path (Docker Postgres + keychain + `run_local`) stays intact and u
                   │  Railway project: video-transcriber (prod env)  │
                   │                                                 │
    Internet ─────►│  Service: api      (Nixpacks build, Node 22)    │
-                  │    └ start: node dist/index.js                  │
+                  │    └ start: node dist/src/index.js                  │
                   │    └ public URL: <name>.up.railway.app          │
                   │    └ healthcheck: GET /health                   │
                   │                                                 │
                   │  Service: worker   (Nixpacks build, Node 22)    │
-                  │    └ start: node dist/worker.js                 │
+                  │    └ start: node dist/src/worker.js             │
                   │    └ no public URL                              │
                   │    └ nixPkgs: yt-dlp, ffmpeg                    │
                   │                                                 │
@@ -104,13 +104,20 @@ cmds = ["npm ci", "npm run build"]
   restartPolicyMaxRetries = 3
 
 [services.api]
-  start = "node dist/index.js"
+  start = "node dist/src/index.js"
   healthcheckPath = "/health"
   healthcheckTimeout = 30
 
 [services.worker]
-  start = "node dist/worker.js"
+  start = "node dist/src/worker.js"
 ```
+
+> **Why `dist/src/*` and not `dist/*`?** `tsconfig.json` includes both `src/**/*` and
+> `tests/**/*`, so TypeScript infers `rootDir` as the repo root, and the emitted layout
+> mirrors source structure (`dist/src/…` + `dist/tests/…`). The simplest fix is to point
+> the start commands at the real entry-point paths. A cleaner alternative — splitting
+> tsconfig into `tsconfig.json` (typecheck) and `tsconfig.build.json` (build, with
+> `rootDir: "src"`) — is deferred; not worth the churn for this migration.
 
 ### Code: no changes required
 
