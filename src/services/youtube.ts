@@ -9,13 +9,21 @@ export type ExecFn = (cmd: string) => Promise<{ stdout: string; stderr: string }
 
 export class YouTubeService implements IYouTubeService {
   private exec: ExecFn
-  constructor(opts: { exec?: ExecFn } = {}) {
+  private cookiesPath?: string
+  constructor(opts: { exec?: ExecFn; cookiesPath?: string } = {}) {
     this.exec = opts.exec ?? ((cmd) => execAsync(cmd, { maxBuffer: 20 * 1024 * 1024 }))
+    this.cookiesPath = opts.cookiesPath
+  }
+
+  private cookiesFlag(): string {
+    return this.cookiesPath ? ` --cookies ${shellQuote(this.cookiesPath)}` : ''
   }
 
   async getMetadata(url: string): Promise<VideoMetadata> {
     const safe = shellQuote(url)
-    const { stdout } = await this.exec(`yt-dlp --no-warnings --dump-json --skip-download ${safe}`)
+    const { stdout } = await this.exec(
+      `yt-dlp --no-warnings${this.cookiesFlag()} --dump-json --skip-download ${safe}`
+    )
     const parsed = JSON.parse(stdout)
     const chapters = Array.isArray(parsed.chapters)
       ? parsed.chapters.map((c: any) => ({
@@ -37,7 +45,7 @@ export class YouTubeService implements IYouTubeService {
     const safeUrl = shellQuote(url)
     const safeOut = shellQuote(outputPath)
     await this.exec(
-      `yt-dlp --no-warnings -x --audio-format mp3 -o ${safeOut} ${safeUrl}`
+      `yt-dlp --no-warnings${this.cookiesFlag()} -x --audio-format mp3 -o ${safeOut} ${safeUrl}`
     )
   }
 }
