@@ -105,6 +105,27 @@ Still in the SQL Editor:
 7. Keep this string in your **password manager** for now. You'll paste it into Railway in
    Part 2.4 — directly in the browser, never via a terminal.
 
+### 1.6 Export YouTube cookies (required in production)
+
+YouTube's bot detection blocks `yt-dlp` requests from cloud-server IP ranges. The deployed
+worker must authenticate as a signed-in user via a cookies file. Local dev runs from a
+residential IP and doesn't need this; production fails fast at boot without it.
+
+1. Open a clean browser profile and sign in to a **dedicated** low-value YouTube account.
+   Do not use your main account — sessions can be revoked when YouTube detects automation.
+2. Install the **"Get cookies.txt LOCALLY"** browser extension.
+3. Visit `https://www.youtube.com`, open the extension, click **Export**, and save the
+   resulting `cookies.txt` file.
+4. Base64-encode it (single line, no wrapping):
+   - macOS: `base64 -i cookies.txt | pbcopy`
+   - Linux: `base64 -w0 cookies.txt | xclip -selection clipboard`
+5. Keep the encoded string in your **password manager** for now. You'll paste it into both
+   Railway services in Part 2.4 — directly in the browser, never via a terminal.
+
+**Refresh ritual.** When downloads start failing with `Sign in to confirm you're not a
+bot`, the cookies have expired (typically every few weeks). Repeat steps 3–4 and update
+the `YOUTUBE_COOKIES_B64` variable on both Railway services, then redeploy.
+
 ---
 
 ## Part 2 — Create the Railway project (~15 min)
@@ -145,6 +166,7 @@ use the Railway CLI in this session.**
    | `OPENAI_API_KEY` | Your OpenAI key (`sk-...`) |
    | `ANTHROPIC_API_KEY` | Your Anthropic key (`sk-ant-...`) |
    | `ASSEMBLYAI_API_KEY` | Your AssemblyAI key |
+   | `YOUTUBE_COOKIES_B64` | Base64 cookies string from Part 1.6 |
    | `NODE_ENV` | `production` |
 
 2. Do **not** add `PORT` — Railway injects it automatically because the api service has a
@@ -167,6 +189,7 @@ use the Railway CLI in this session.**
    | `OPENAI_API_KEY` | Same as api |
    | `ANTHROPIC_API_KEY` | Same as api |
    | `ASSEMBLYAI_API_KEY` | Same as api |
+   | `YOUTUBE_COOKIES_B64` | Same value as api |
    | `NODE_ENV` | `production` |
 
 > **Why duplicate the same values across services?** Railway scopes variables per
@@ -297,6 +320,9 @@ If logs are clean: you're done.
 | Worker logs: `Invalid URL` from `pg-connection-string` | Malformed connection string — usually unencoded special chars in the password, leftover `[YOUR-PASSWORD]` placeholder, or wrapping quotes | URL-encode `@/:#%+ ` in the password; remove any quotes; re-save in Railway. |
 | Worker logs: `SELF_SIGNED_CERT_IN_CHAIN` | `sslmode=require` is being interpreted as `verify-full` by newer `pg-connection-string`, which can't validate Supabase's pooler cert against Node's built-in CAs | Append `&uselibpqcompat=true` to the connection string so `require` means "encrypt, don't verify CA" (libpq semantics). Identity is still asserted by the DB password. |
 | Worker logs: connection drops every few minutes, or `LISTEN/NOTIFY` errors | Using the **Transaction** pooler (port 6543) instead of the Session pooler (5432) | Switch the connection string to the Session pooler (port 5432, user `postgres.<project-ref>`) in Railway → redeploy worker. |
+| Worker logs: `yt-dlp` error `Sign in to confirm you're not a bot` | `YOUTUBE_COOKIES_B64` missing, malformed, or expired | Re-export per [Step 1.6](#16-export-youtube-cookies-required-in-production); base64-encode; update on both Railway services; redeploy. |
+| Boot fails with `Invalid config: YOUTUBE_COOKIES_B64 is required in production` | The secret isn't set on this service in production mode | Follow [Step 1.6](#16-export-youtube-cookies-required-in-production) and set the variable on both api and worker. |
+| Boot fails with `Invalid YOUTUBE_COOKIES_B64: decoded content is not a Netscape cookies.txt file` | The base64 decoded to non-cookies content, or you pasted raw cookies (not base64) | Re-encode with `base64 -i cookies.txt` (macOS) or `base64 -w0 cookies.txt` (Linux); make sure the file starts with `# Netscape HTTP Cookie File`. |
 | `/videos/<id>/status` stuck on `transcribing` for >15 min | AssemblyAI job didn't return | Check AssemblyAI dashboard for the actual job state. Cross-reference `transcripts.assemblyai_id` via Supabase SQL Editor. |
 | API responds 502 / never starts | `loadConfig` threw on missing env var | Check api deploy logs for `Invalid config: …`. Add the missing variable in Railway → Variables → redeploy. |
 | Healthcheck times out | Cold start exceeded `healthcheckTimeout = 30` | Bump to 60 in `railway.toml`, commit, push, deploy. |
