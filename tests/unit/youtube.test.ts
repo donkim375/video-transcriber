@@ -83,3 +83,29 @@ describe('YouTubeService with cookiesPath', () => {
     expect(cmd).not.toContain('--cookies')
   })
 })
+
+describe('YouTubeService with ytDlpPath', () => {
+  it('invokes the configured yt-dlp binary path in getMetadata', async () => {
+    const exec = vi.fn(async (_cmd: string) => ({ stdout: okMetadata, stderr: '' }))
+    const svc = new YouTubeService({ exec, ytDlpPath: '/app/bin/yt-dlp' })
+    await svc.getMetadata('https://youtu.be/abc')
+    const cmd = exec.mock.calls[0]![0] as string
+    expect(cmd.startsWith('/app/bin/yt-dlp ')).toBe(true)
+  })
+
+  it('invokes the configured yt-dlp binary path in downloadAudio', async () => {
+    const exec = vi.fn(async (_cmd: string) => ({ stdout: '', stderr: '' }))
+    const svc = new YouTubeService({ exec, ytDlpPath: '/app/bin/yt-dlp' })
+    await svc.downloadAudio('https://youtu.be/abc', '/tmp/abc.mp3')
+    const cmd = exec.mock.calls[0]![0] as string
+    expect(cmd.startsWith('/app/bin/yt-dlp ')).toBe(true)
+  })
+
+  it('defaults to bare "yt-dlp" when ytDlpPath is undefined', async () => {
+    const exec = vi.fn(async (_cmd: string) => ({ stdout: okMetadata, stderr: '' }))
+    const svc = new YouTubeService({ exec })
+    await svc.getMetadata('https://youtu.be/abc')
+    const cmd = exec.mock.calls[0]![0] as string
+    expect(cmd.startsWith('yt-dlp ')).toBe(true)
+  })
+})
