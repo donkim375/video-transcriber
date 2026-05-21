@@ -75,18 +75,33 @@ Still in the SQL Editor:
 
 1. Click the **gear icon (Project Settings)** in the bottom-left → **"Database"**.
 2. Scroll to **"Connection string"** → tab **"URI"**.
-3. **Connection mode:** select **"Direct connection"** (port `5432`), **not** "Transaction"
-   (port `6543`). Direct is required because pg-boss uses `LISTEN/NOTIFY`, which the
-   transaction pooler does not support.
+3. **Connection mode:** select **"Session pooler"** (port `5432`). Do **not** pick:
+   - **"Direct connection"** — resolves to IPv6-only on Supabase free tier; Railway
+     containers have no IPv6 egress, so connections fail with `ENETUNREACH`.
+   - **"Transaction pooler"** (port `6543`) — breaks pg-boss because it doesn't support
+     `LISTEN/NOTIFY`.
+
+   Session pooler is IPv4-reachable and runs PgBouncer in *session mode*, which preserves
+   the connection state pg-boss needs.
 4. The string looks like:
    ```
-   postgresql://postgres:[YOUR-PASSWORD]@db.xxxxxxxxxx.supabase.co:5432/postgres
+   postgresql://postgres.<project-ref>:[YOUR-PASSWORD]@aws-0-<region>.pooler.supabase.com:5432/postgres
    ```
-5. Replace `[YOUR-PASSWORD]` with the password you saved in step 1.2.
-6. Append `?sslmode=require` to the end:
+   Note the user is `postgres.<project-ref>` (not just `postgres`) and the host is
+   `aws-0-<region>.pooler.supabase.com` (not `db.<ref>.supabase.co`).
+5. Replace `[YOUR-PASSWORD]` with the password you saved in step 1.2. **URL-encode any
+   special characters** in the password — `@` → `%40`, `/` → `%2F`, `:` → `%3A`, `#` →
+   `%23`, space → `%20`, `+` → `%2B`, `%` → `%25`. If the password has no special
+   characters, no encoding is needed.
+6. Append `?sslmode=require&uselibpqcompat=true` to the end:
    ```
-   postgresql://postgres:<password>@db.xxxxxxxxxx.supabase.co:5432/postgres?sslmode=require
+   postgresql://postgres.<project-ref>:<encoded-password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require&uselibpqcompat=true
    ```
+   Why both flags? `sslmode=require` keeps the channel TLS-encrypted. `uselibpqcompat=true`
+   tells the Node `pg-connection-string` library to interpret `require` the libpq way
+   (encrypt, don't verify the CA chain) instead of the newer default of `verify-full`
+   (which fails against the Supabase pooler cert chain with `SELF_SIGNED_CERT_IN_CHAIN`).
+   Identity is asserted by the database password, not the CA chain.
 7. Keep this string in your **password manager** for now. You'll paste it into Railway in
    Part 2.4 — directly in the browser, never via a terminal.
 
@@ -278,7 +293,10 @@ If logs are clean: you're done.
 | Build fails: `yt-dlp: command not found` during runtime | Missing or misnamed Nixpacks package | Confirm `nixpacks.toml` is at repo root and contains `nixPkgs = ["nodejs_22", "yt-dlp", "ffmpeg"]`. Trigger redeploy. |
 | Worker logs: `password authentication failed` | Wrong password in connection string | Re-copy from your password manager; check `:` and `@` are URL-safe (URL-encode any `@`, `:`, `/` in the password). |
 | Worker logs: `relation "pgboss.job" does not exist` | First boot didn't complete; pg-boss didn't get to create its schema | Check the Postgres user has `CREATE` privilege (the default Supabase `postgres` user does). Redeploy worker. |
-| Worker logs: connection drops every few minutes | Using the transaction pooler (port 6543) instead of direct connection (5432) | Switch the connection string to port 5432 in Railway → redeploy worker. |
+| Worker logs: `ENETUNREACH` to an IPv6 address (e.g. `2406:…:5432`) | Using **Direct connection** (`db.<ref>.supabase.co`) — IPv6-only on Supabase free tier; Railway has no IPv6 egress | Switch the connection string to the **Session pooler** host `aws-0-<region>.pooler.supabase.com` (port 5432, user `postgres.<project-ref>`). Redeploy. |
+| Worker logs: `Invalid URL` from `pg-connection-string` | Malformed connection string — usually unencoded special chars in the password, leftover `[YOUR-PASSWORD]` placeholder, or wrapping quotes | URL-encode `@/:#%+ ` in the password; remove any quotes; re-save in Railway. |
+| Worker logs: `SELF_SIGNED_CERT_IN_CHAIN` | `sslmode=require` is being interpreted as `verify-full` by newer `pg-connection-string`, which can't validate Supabase's pooler cert against Node's built-in CAs | Append `&uselibpqcompat=true` to the connection string so `require` means "encrypt, don't verify CA" (libpq semantics). Identity is still asserted by the DB password. |
+| Worker logs: connection drops every few minutes, or `LISTEN/NOTIFY` errors | Using the **Transaction** pooler (port 6543) instead of the Session pooler (5432) | Switch the connection string to the Session pooler (port 5432, user `postgres.<project-ref>`) in Railway → redeploy worker. |
 | `/videos/<id>/status` stuck on `transcribing` for >15 min | AssemblyAI job didn't return | Check AssemblyAI dashboard for the actual job state. Cross-reference `transcripts.assemblyai_id` via Supabase SQL Editor. |
 | API responds 502 / never starts | `loadConfig` threw on missing env var | Check api deploy logs for `Invalid config: …`. Add the missing variable in Railway → Variables → redeploy. |
 | Healthcheck times out | Cold start exceeded `healthcheckTimeout = 30` | Bump to 60 in `railway.toml`, commit, push, deploy. |

@@ -24,7 +24,7 @@ The local dev path (Docker Postgres + keychain + `run_local`) stays intact and u
 | Secrets store | Railway env vars (option A) | Adequate for solo project; the choice of store does not change the LLM-exposure threat model — discipline at the CLI boundary does (see "Secrets handling"). |
 | Environments | Prod only (for now) | Local Docker = staging surrogate. Path to add staging later is small (new Supabase project + Railway environment). |
 | System binaries | Nixpacks `nixpacks.toml` | Declarative, no Dockerfile. Co-located on both services for build uniformity. |
-| pg-boss DB connection | Supabase **direct connection** (port 5432) | pg-boss uses `LISTEN/NOTIFY`, which is incompatible with the transaction pooler (port 6543). Direct connection sidesteps the issue; free-tier connection budget is sufficient for two services. |
+| pg-boss DB connection | Supabase **Session pooler** (port 5432) | pg-boss uses `LISTEN/NOTIFY`, which is incompatible with the *transaction* pooler (port 6543) but works on the *session* pooler. Direct connection (`db.<ref>.supabase.co`) was the original choice but resolves to IPv6-only on Supabase free tier, and Railway containers have no IPv6 egress (`ENETUNREACH`). Session pooler is IPv4-reachable and free. |
 | Deploy trigger | Manual (for now) | Solo, pre-traffic. Auto-deploy on `main` deferred until CI gating is in place. |
 
 ## Target architecture
@@ -52,7 +52,7 @@ The local dev path (Docker Postgres + keychain + `run_local`) stays intact and u
                   │    PORT  (api only — Railway injects)           │
                   └───────────────────────┬─────────────────────────┘
                                           │
-                                pg direct (5432, TLS)
+                          Session pooler (5432, TLS, IPv4)
                                           │
                   ┌───────────────────────▼─────────────────────────┐
                   │  Supabase project: video-transcriber-prod       │
@@ -171,7 +171,7 @@ service at startup — withholding the key would crash the api.
 
 | Variable | api | worker | Source |
 |---|:-:|:-:|---|
-| `SUPABASE_CONNECTION_STRING` | ✅ | ✅ | Supabase → Project Settings → Database → URI (direct connection, port 5432). Append `?sslmode=require`. |
+| `SUPABASE_CONNECTION_STRING` | ✅ | ✅ | Supabase → Project Settings → Database → URI (**Session pooler**, port 5432, host `aws-0-<region>.pooler.supabase.com`, user `postgres.<project-ref>`). Append `?sslmode=require&uselibpqcompat=true` — encrypt the channel but skip CA-chain verification, which the Supabase pooler cert fails by default with newer `pg-connection-string`. Do not use the Transaction pooler (port 6543) — breaks pg-boss `LISTEN/NOTIFY`. |
 | `OPENAI_API_KEY` | ✅ | ✅ | OpenAI console. |
 | `ANTHROPIC_API_KEY` | ✅ | ✅ | Anthropic console. |
 | `ASSEMBLYAI_API_KEY` | ✅ | ✅ | AssemblyAI dashboard. |
