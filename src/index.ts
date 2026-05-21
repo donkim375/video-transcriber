@@ -5,6 +5,7 @@ import { buildServer } from './server.js'
 import { QUEUE_PIPELINE } from './queues/jobs.js'
 import { YouTubeService } from './services/youtube.js'
 import { writeCookiesFile } from './services/youtube-cookies.js'
+import { resolveYtDlpPath } from './services/youtube-bin.js'
 import { AssemblyAIService } from './services/assemblyai.js'
 import { OpenAIEmbeddingService } from './services/embeddings.js'
 import { ClaudeLLMService } from './services/llm.js'
@@ -21,7 +22,7 @@ async function main() {
   await boss.createQueue(QUEUE_PIPELINE)
   const app = await buildServer({
     pool,
-    youtube: new YouTubeService({ cookiesPath, ytDlpPath: process.env.YTDLP_BIN }),
+    youtube: new YouTubeService({ cookiesPath, ytDlpPath: resolveYtDlpPath() }),
     transcription: AssemblyAIService.fromApiKey(cfg.assemblyaiApiKey),
     embeddings: OpenAIEmbeddingService.fromApiKey(cfg.openaiApiKey),
     llm: ClaudeLLMService.fromApiKey(cfg.anthropicApiKey),

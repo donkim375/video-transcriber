@@ -12,8 +12,5 @@ cmds = [
 [phases.build]
 cmds = ["npm run build"]
 
-[variables]
-YTDLP_BIN = "/app/bin/yt-dlp"
-
 [start]
 cmd = "node dist/src/index.js"

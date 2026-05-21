@@ -4,6 +4,7 @@ import { loadConfig } from './config.js'
 import { registerPipelineWorker } from './workers/pipeline.worker.js'
 import { YouTubeService } from './services/youtube.js'
 import { writeCookiesFile } from './services/youtube-cookies.js'
+import { resolveYtDlpPath } from './services/youtube-bin.js'
 import { AssemblyAIService } from './services/assemblyai.js'
 import { OpenAIEmbeddingService } from './services/embeddings.js'
 import { ClaudeLLMService } from './services/llm.js'
@@ -21,7 +22,7 @@ async function main() {
   await boss.createQueue(QUEUE_PIPELINE)
   await registerPipelineWorker(boss, {
     pool,
-    youtube: new YouTubeService({ cookiesPath, ytDlpPath: process.env.YTDLP_BIN }),
+    youtube: new YouTubeService({ cookiesPath, ytDlpPath: resolveYtDlpPath() }),
     transcription: AssemblyAIService.fromApiKey(cfg.assemblyaiApiKey),
     embeddings: OpenAIEmbeddingService.fromApiKey(cfg.openaiApiKey),
     llm: ClaudeLLMService.fromApiKey(cfg.anthropicApiKey),

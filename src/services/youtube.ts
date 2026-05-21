@@ -14,7 +14,7 @@ export class YouTubeService implements IYouTubeService {
   constructor(opts: { exec?: ExecFn; cookiesPath?: string; ytDlpPath?: string } = {}) {
     this.exec = opts.exec ?? ((cmd) => execAsync(cmd, { maxBuffer: 20 * 1024 * 1024 }))
     this.cookiesPath = opts.cookiesPath
-    this.ytDlpPath = opts.ytDlpPath ?? 'yt-dlp'
+    this.ytDlpPath = opts.ytDlpPath && opts.ytDlpPath.length > 0 ? opts.ytDlpPath : 'yt-dlp'
   }
 
   private cookiesFlag(): string {
