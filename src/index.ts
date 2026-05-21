@@ -21,7 +21,7 @@ async function main() {
   await boss.createQueue(QUEUE_PIPELINE)
   const app = await buildServer({
     pool,
-    youtube: new YouTubeService({ cookiesPath }),
+    youtube: new YouTubeService({ cookiesPath, ytDlpPath: process.env.YTDLP_BIN }),
     transcription: AssemblyAIService.fromApiKey(cfg.assemblyaiApiKey),
     embeddings: OpenAIEmbeddingService.fromApiKey(cfg.openaiApiKey),
     llm: ClaudeLLMService.fromApiKey(cfg.anthropicApiKey),
