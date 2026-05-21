@@ -108,4 +108,12 @@ describe('YouTubeService with ytDlpPath', () => {
     const cmd = exec.mock.calls[0]![0] as string
     expect(cmd.startsWith('yt-dlp ')).toBe(true)
   })
+
+  it('falls back to "yt-dlp" when ytDlpPath is an empty string', async () => {
+    const exec = vi.fn(async (_cmd: string) => ({ stdout: okMetadata, stderr: '' }))
+    const svc = new YouTubeService({ exec, ytDlpPath: '' })
+    await svc.getMetadata('https://youtu.be/abc')
+    const cmd = exec.mock.calls[0]![0] as string
+    expect(cmd.startsWith('yt-dlp ')).toBe(true)
+  })
 })
