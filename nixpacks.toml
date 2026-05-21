@@ -1,8 +1,12 @@
 [phases.setup]
-nixPkgs = ["nodejs_22", "yt-dlp", "ffmpeg"]
+nixPkgs = ["nodejs_22", "ffmpeg", "curl"]
 
 [phases.install]
-cmds = ["npm ci --include=dev"]
+cmds = [
+  "npm ci --include=dev",
+  "curl -fsSL -o /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp",
+  "chmod +x /usr/local/bin/yt-dlp",
+]
 
 [phases.build]
 cmds = ["npm run build"]
