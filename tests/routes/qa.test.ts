@@ -35,6 +35,7 @@ beforeAll(async () => {
     embeddings: new MockEmbeddingService(),
     llm,
     enqueueJob: async () => 'job-1',
+    corsAllowedOrigin: 'http://localhost:3001',
   })
 }, 90_000)
 
