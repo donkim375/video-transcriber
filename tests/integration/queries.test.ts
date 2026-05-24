@@ -14,6 +14,8 @@ import {
   insertTranscript,
   insertChunk,
   listTalksForVideo,
+  setSourceVideoFaqs,
+  setSourceVideoDayLabel,
 } from '../../src/db/queries.js'
 
 const pool = makeTestPool()
@@ -54,6 +56,21 @@ describe('source_videos CRUD', () => {
     await expect(
       insertSourceVideo(pool, { youtubeUrl: 'https://youtu.be/def', youtubeId: 'abc' })
     ).rejects.toThrow()
+  })
+
+  it('setSourceVideoFaqs stores faqs jsonb and getSourceVideoById returns them', async () => {
+    const sv = await insertSourceVideo(pool, { youtubeUrl: 'https://youtu.be/faq1', youtubeId: 'faq1' })
+    const faqs = [{ question: 'q1', answer: 'a1' }, { question: 'q2', answer: 'a2' }]
+    await setSourceVideoFaqs(pool, sv.id, faqs)
+    const row = await getSourceVideoById(pool, sv.id)
+    expect(row?.faqs).toEqual(faqs)
+  })
+
+  it('setSourceVideoDayLabel stores day_label', async () => {
+    const sv = await insertSourceVideo(pool, { youtubeUrl: 'https://youtu.be/day1', youtubeId: 'day1' })
+    await setSourceVideoDayLabel(pool, sv.id, 'Day 1')
+    const row = await getSourceVideoById(pool, sv.id)
+    expect(row?.day_label).toBe('Day 1')
   })
 })
 
