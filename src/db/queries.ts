@@ -36,6 +36,19 @@ export async function getSourceVideoById(pool: pg.Pool, id: string): Promise<Sou
   return rows[0] ?? null
 }
 
+export async function getSourceVideoForTalk(
+  pool: pg.Pool,
+  talkId: string
+): Promise<{ source_video_id: string; youtube_id: string; title: string | null; day_label: string | null } | null> {
+  const { rows } = await pool.query(
+    `select sv.id as source_video_id, sv.youtube_id, sv.title, sv.day_label
+       from talks t join source_videos sv on t.source_video_id = sv.id
+      where t.id = $1`,
+    [talkId]
+  )
+  return rows[0] ?? null
+}
+
 export async function getSourceVideoByYoutubeId(pool: pg.Pool, youtubeId: string): Promise<SourceVideoRow | null> {
   const { rows } = await pool.query(`select * from source_videos where youtube_id = $1`, [youtubeId])
   return rows[0] ?? null

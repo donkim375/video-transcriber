@@ -17,6 +17,7 @@ import {
   insertTalk,
   insertTranscript,
   insertChunk,
+  setSourceVideoDayLabel,
 } from '../../src/db/queries.js'
 
 const pool = makeTestPool()
@@ -90,5 +91,56 @@ describe('POST /qa', () => {
     expect(body.answer).toContain('Vectors')
     expect(Array.isArray(body.sources)).toBe(true)
     expect(body.sources.length).toBeGreaterThan(0)
+  })
+
+  it('returns citations with youtube_deeplink for each source', async () => {
+    const sv = await insertSourceVideo(pool, {
+      youtubeUrl: 'https://youtu.be/abc',
+      youtubeId: 'abc',
+      title: 'Day 1 talks',
+    })
+    await setSourceVideoDayLabel(pool, sv.id, 'Day 1')
+    const talk = await insertTalk(pool, {
+      sourceVideoId: sv.id,
+      title: 'Daytona Sandboxes',
+      speaker: 'Speaker A',
+      talkIndex: 0,
+      startMs: 30_000,
+      endMs: 60_000,
+    })
+    const tr = await insertTranscript(pool, {
+      talkId: talk.id,
+      assemblyaiId: 'tx2',
+      rawText: '',
+      utterances: [],
+    })
+    await insertChunk(pool, {
+      talkId: talk.id,
+      transcriptId: tr.id,
+      chunkIndex: 0,
+      text: 'Daytona uses isolated sandboxes',
+      startMs: 32_000,
+      endMs: 40_000,
+      tokenCount: 5,
+      embedding: vec(2),
+    })
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/qa',
+      payload: { question: 'How does Daytona manage sandboxes?' },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(Array.isArray(body.citations)).toBe(true)
+    expect(body.citations.length).toBeGreaterThan(0)
+    const c = body.citations[0]
+    expect(c.video_id).toBe(sv.id)
+    expect(c.video_title).toBe('Day 1 talks')
+    expect(c.day_label).toBe('Day 1')
+    expect(c.talk_id).toBe(talk.id)
+    expect(c.talk_title).toBe('Daytona Sandboxes')
+    expect(c.start_ms).toBe(32_000)
+    expect(c.youtube_deeplink).toBe('https://youtu.be/abc?t=32')
   })
 })

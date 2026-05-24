@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import type { AppDeps } from '../server.js'
-import { matchChunks, getTalkById } from '../db/queries.js'
+import { matchChunks, getTalkById, getSourceVideoForTalk } from '../db/queries.js'
 import { buildRagContext, type ChunkForContext } from '../services/rag.js'
 
 const Body = z.object({
@@ -39,6 +39,23 @@ export async function registerQaRoutes(app: FastifyInstance, deps: AppDeps): Pro
       const context = buildRagContext(contextChunks)
       const answer = await deps.llm.answerQuestion(parsed.data.question, context)
 
+      const citations = []
+      for (const c of chunks) {
+        const sv = await getSourceVideoForTalk(deps.pool, c.talk_id)
+        const talk = await getTalkById(deps.pool, c.talk_id)
+        if (!sv || !talk) continue
+        const startSeconds = Math.floor((c.start_ms ?? 0) / 1000)
+        citations.push({
+          video_id: sv.source_video_id,
+          video_title: sv.title,
+          day_label: sv.day_label,
+          talk_id: c.talk_id,
+          talk_title: talk.title,
+          start_ms: c.start_ms ?? 0,
+          youtube_deeplink: `https://youtu.be/${sv.youtube_id}?t=${startSeconds}`,
+        })
+      }
+
       return {
         answer,
         sources: chunks.map((c) => ({
@@ -49,6 +66,7 @@ export async function registerQaRoutes(app: FastifyInstance, deps: AppDeps): Pro
           end_ms: c.end_ms,
           similarity: c.similarity,
         })),
+        citations,
       }
     }
   )
