@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify'
 import cors from '@fastify/cors'
+import rateLimit from '@fastify/rate-limit'
 import type { Pool } from 'pg'
 import type { IYouTubeService } from './interfaces/youtube.js'
 import type { ITranscriptionService } from './interfaces/assemblyai.js'
@@ -22,8 +23,9 @@ export interface AppDeps {
 }
 
 export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
-  const app = Fastify({ logger: false })
+  const app = Fastify({ logger: false, trustProxy: true })
   await app.register(cors, { origin: deps.corsAllowedOrigin })
+  await app.register(rateLimit, { global: false })
   app.get('/health', async () => ({ status: 'ok' }))
   await registerVideoRoutes(app, deps)
   await registerTalkRoutes(app, deps)
