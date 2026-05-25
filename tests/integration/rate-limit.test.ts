@@ -25,7 +25,7 @@ beforeAll(async () => {
     youtube: new MockYouTubeService({ title: '', channel: '', durationSeconds: 0, thumbnailUrl: '', chapters: [] }),
     transcription: new MockTranscriptionService({ assemblyaiId: '', rawText: '', utterances: [] }),
     embeddings: new MockEmbeddingService(),
-    llm: new MockLLMService([], '', 'answer'),
+    llm: new MockLLMService([], ''),
     enqueueJob: async () => 'job-1',
     corsAllowedOrigin: 'http://localhost:3001',
   })

@@ -35,14 +35,20 @@ export async function registerSearchRoutes(app: FastifyInstance, deps: AppDeps):
       if (!queryEmbedding) return reply.code(500).send({ error: 'embedding failed' })
 
       const [vectorRows, keywordRows] = await Promise.all([
-        matchChunks(deps.pool, queryEmbedding, limit * 3, talk_id),
+        matchChunks(deps.pool, queryEmbedding, limit * 3, { talkId: talk_id }),
         searchChunksFullText(deps.pool, query, limit * 3, talk_id),
       ])
 
       const merged = reciprocalRankFusion<MergedChunk>(
         [
           keywordRows.map((r) => ({ ...r })),
-          vectorRows.map((r) => ({ ...r })),
+          vectorRows.map((r) => ({
+            id: r.chunk_id,
+            text: r.text,
+            talk_id: r.talk_id,
+            start_ms: r.start_ms,
+            end_ms: r.end_ms,
+          })),
         ],
         { k: 60 }
       )

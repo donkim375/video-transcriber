@@ -57,7 +57,7 @@ describe('runSummarize', () => {
       talkId: talkB.id, assemblyaiId: 'tx-B', rawText: 'B text', utterances: [],
     })
 
-    const llm = new MockLLMService([], 'Generated summary.', 'answer')
+    const llm = new MockLLMService([], 'Generated summary.')
     const ctx: StepContext = {
       pool,
       youtube: new MockYouTubeService({ title: '', channel: '', durationSeconds: 0, thumbnailUrl: '', chapters: [] }),

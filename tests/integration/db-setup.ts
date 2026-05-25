@@ -31,7 +31,7 @@ export function startContainer(): void {
 }
 
 export async function applyMigrations(pool: pg.Pool): Promise<void> {
-  for (const file of ['001_initial.sql', '002_content_type.sql', '003_faqs_and_day_label.sql']) {
+  for (const file of ['001_initial.sql', '002_content_type.sql', '003_faqs_and_day_label.sql', '004_qa_upgrade.sql']) {
     const sql = readFileSync(resolve(`src/db/migrations/${file}`), 'utf8')
     await pool.query(sql)
   }

@@ -44,7 +44,6 @@ describe('FAQ pipeline step', () => {
     const llm = new MockLLMService(
       [{ title: 'Talk 1', speaker: 'A', startMs: 0, endMs: 1000 }],
       'Mock summary.',
-      'unused',
       fakeFaqs
     )
     await registerPipelineWorker(boss, {
@@ -90,7 +89,6 @@ describe('FAQ pipeline step', () => {
     const llm = new MockLLMService(
       [{ title: 'Talk 1', speaker: 'A', startMs: 0, endMs: 1000 }],
       'Mock summary.',
-      'unused',
       [{ question: 'shouldnotbeused', answer: '...' }]
     )
     await registerPipelineWorker(boss, {

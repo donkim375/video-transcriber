@@ -71,7 +71,7 @@ describe('pipeline worker (pg-boss)', () => {
       utterances: sampleUtterances,
     })
     const embeddings = new MockEmbeddingService()
-    const llm = new MockLLMService([], 'A summary.', 'answer')
+    const llm = new MockLLMService([], 'A summary.')
 
     await registerPipelineWorker(boss, {
       pool,

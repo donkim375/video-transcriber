@@ -53,7 +53,7 @@ describe('runSegment', () => {
       youtubeUrl: 'https://youtu.be/abc',
       youtubeId: 'abc',
     })
-    const llm = new MockLLMService([], 'summary', 'answer')
+    const llm = new MockLLMService([], 'summary')
     const ctx: StepContext = {
       pool,
       youtube: new MockYouTubeService({ title: '', channel: '', durationSeconds: 0, thumbnailUrl: '', chapters: [] }),
@@ -97,7 +97,7 @@ describe('runSegment', () => {
     const boundaries: TalkBoundary[] = [
       { title: 'LLM Talk', speaker: 'Speaker', startMs: 0, endMs: 24000 },
     ]
-    const llm = new MockLLMService(boundaries, 'summary', 'answer')
+    const llm = new MockLLMService(boundaries, 'summary')
     const ctx: StepContext = {
       pool,
       youtube: new MockYouTubeService({ title: '', channel: '', durationSeconds: 0, thumbnailUrl: '', chapters: [] }),
@@ -133,7 +133,7 @@ describe('runSegment — boundary validation', () => {
       youtube: new MockYouTubeService({ title: '', channel: '', durationSeconds: 0, thumbnailUrl: '', chapters: [] }),
       transcription: new MockTranscriptionService({ assemblyaiId: 'tx-overlap', rawText: '', utterances: [] }),
       embeddings: new MockEmbeddingService(),
-      llm: new MockLLMService([], 'summary', 'answer'),
+      llm: new MockLLMService([], 'summary'),
       tmpDir: tmpdir(),
       sourceVideoId: sv.id,
       youtubeUrl: 'https://youtu.be/overlap',
