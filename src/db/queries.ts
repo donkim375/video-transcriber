@@ -377,3 +377,42 @@ export async function getOverview(pool: pg.Pool, scope: ScopeFilters): Promise<O
   }
   return { videos: [...byVideo.values()] }
 }
+
+export interface TalkSummaryRow {
+  talk_id: string
+  talk_title: string | null
+  speaker: string | null
+  summary: string | null
+  start_ms: number
+  end_ms: number
+  source_video_id: string
+  youtube_deeplink: string
+}
+
+export async function getTalkSummaries(pool: pg.Pool, scope: ScopeFilters & { limit?: number }): Promise<TalkSummaryRow[]> {
+  const limit = scope.limit ?? 5
+  const { rows } = await pool.query(
+    `select t.id as talk_id, t.title as talk_title, t.speaker, tr.summary,
+            t.start_ms, t.end_ms, sv.id as source_video_id, sv.youtube_id
+       from talks t
+       join source_videos sv on sv.id = t.source_video_id
+       left join transcripts tr on tr.talk_id = t.id
+      where ($1::uuid is null or t.id = $1)
+        and ($2::uuid[] is null or sv.id = any($2))
+        and ($3::text is null or sv.series_slug = $3)
+        and ($4::text is null or t.speaker ilike '%' || $4 || '%')
+      order by t.talk_index asc
+      limit $5`,
+    [scope.talkId ?? null, scope.sourceVideoIds ?? null, scope.seriesSlug ?? null, scope.speaker ?? null, limit]
+  )
+  return rows.map(r => ({
+    talk_id: r.talk_id,
+    talk_title: r.talk_title,
+    speaker: r.speaker,
+    summary: r.summary,
+    start_ms: r.start_ms ?? 0,
+    end_ms: r.end_ms ?? 0,
+    source_video_id: r.source_video_id,
+    youtube_deeplink: `https://youtu.be/${r.youtube_id}?t=${Math.floor((r.start_ms ?? 0) / 1000)}`,
+  }))
+}
