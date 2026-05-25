@@ -250,3 +250,62 @@ export async function searchChunksFullText(
   )
   return rows
 }
+
+export interface Metadata {
+  total_videos: number
+  total_talks: number
+  total_duration_seconds: number
+  series_slugs: string[]
+  day_labels: string[]
+  speakers: string[]
+  talks: Array<{
+    talk_id: string
+    talk_title: string | null
+    speaker: string | null
+    talk_index: number
+    start_ms: number
+    end_ms: number
+    day_label: string | null
+  }>
+}
+
+export async function getMetadata(pool: pg.Pool, scope: ScopeFilters): Promise<Metadata> {
+  const { rows: agg } = await pool.query(
+    `select
+       count(distinct sv.id)::int as total_videos,
+       count(distinct t.id)::int as total_talks,
+       coalesce(sum(distinct sv.duration_seconds), 0)::int as total_duration_seconds,
+       array_remove(array_agg(distinct sv.series_slug), null) as series_slugs,
+       array_remove(array_agg(distinct sv.day_label), null) as day_labels,
+       array_remove(array_agg(distinct t.speaker), null) as speakers
+     from talks t
+     join source_videos sv on sv.id = t.source_video_id
+     where ($1::uuid is null or t.id = $1)
+       and ($2::uuid[] is null or sv.id = any($2))
+       and ($3::text is null or sv.series_slug = $3)
+       and ($4::text is null or t.speaker ilike '%' || $4 || '%')`,
+    [scope.talkId ?? null, scope.sourceVideoIds ?? null, scope.seriesSlug ?? null, scope.speaker ?? null]
+  )
+
+  const { rows: talks } = await pool.query(
+    `select t.id as talk_id, t.title as talk_title, t.speaker, t.talk_index, t.start_ms, t.end_ms, sv.day_label
+       from talks t
+       join source_videos sv on sv.id = t.source_video_id
+      where ($1::uuid is null or t.id = $1)
+        and ($2::uuid[] is null or sv.id = any($2))
+        and ($3::text is null or sv.series_slug = $3)
+        and ($4::text is null or t.speaker ilike '%' || $4 || '%')
+      order by sv.day_label nulls last, t.talk_index asc`,
+    [scope.talkId ?? null, scope.sourceVideoIds ?? null, scope.seriesSlug ?? null, scope.speaker ?? null]
+  )
+
+  return {
+    total_videos: agg[0]?.total_videos ?? 0,
+    total_talks: agg[0]?.total_talks ?? 0,
+    total_duration_seconds: agg[0]?.total_duration_seconds ?? 0,
+    series_slugs: agg[0]?.series_slugs ?? [],
+    day_labels: agg[0]?.day_labels ?? [],
+    speakers: agg[0]?.speakers ?? [],
+    talks,
+  }
+}
