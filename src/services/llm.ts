@@ -1,12 +1,12 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { z } from 'zod'
-import type { ILLMService } from '../interfaces/llm.js'
+import type { ILLMService, AnthropicCallResponse, ToolCallOptions } from '../interfaces/llm.js'
 import type { TalkBoundary } from '../types/index.js'
 import { withRetry } from './retry.js'
 
 type ClientLike = {
   messages: {
-    create(p: any): Promise<{ content: { type: string; text?: string }[] }>
+    create(p: any): Promise<any>
   }
 }
 
@@ -43,8 +43,8 @@ export class ClaudeLLMService implements ILLMService {
       }),
       { opName: 'anthropic.messages.create' },
     )
-    const blocks = res.content.filter((b) => b.type === 'text' && typeof b.text === 'string')
-    return blocks.map((b) => b.text as string).join('\n').trim()
+    const blocks = res.content.filter((b: { type: string; text?: string }) => b.type === 'text' && typeof b.text === 'string')
+    return blocks.map((b: { text?: string }) => b.text as string).join('\n').trim()
   }
 
   async segmentTranscript(transcript: string): Promise<TalkBoundary[]> {
@@ -67,13 +67,16 @@ export class ClaudeLLMService implements ILLMService {
     return this.invoke(sys, `Talk transcript:\n${transcript}`, 1024)
   }
 
-  async answerQuestion(question: string, context: string): Promise<string> {
-    const sys =
-      'Answer the user question using only the provided context. ' +
-      'Cite sources inline as [chunk:<id>] where the context provides such markers. ' +
-      'If the answer is not in the context, say so.'
-    const user = `Context:\n${context}\n\nQuestion: ${question}`
-    return this.invoke(sys, user, 2048)
+  async toolCall(opts: ToolCallOptions): Promise<AnthropicCallResponse> {
+    const res = await this.client.messages.create({
+      model: opts.model ?? MODEL,
+      max_tokens: opts.max_tokens ?? 2048,
+      system: opts.system,
+      messages: opts.messages,
+      tools: opts.tools,
+      tool_choice: opts.tool_choice ?? { type: 'auto' },
+    } as any)
+    return res as unknown as AnthropicCallResponse
   }
 
   async summarizeForSynthesis(input: { idea: string; talkTitle: string; speaker: string; evidence: string[] }): Promise<string> {
@@ -85,8 +88,8 @@ export class ClaudeLLMService implements ILLMService {
       system: sys,
       messages: [{ role: 'user', content: user }],
     })
-    const blocks = res.content.filter((b) => b.type === 'text' && typeof b.text === 'string')
-    return blocks.map((b) => b.text as string).join(' ').trim()
+    const blocks = res.content.filter((b: { type: string; text?: string }) => b.type === 'text' && typeof b.text === 'string')
+    return blocks.map((b: { text?: string }) => b.text as string).join(' ').trim()
   }
 
   async generateFaqs(input: { videoTitle: string; talks: Array<{ title: string; summary: string }> }): Promise<Array<{ question: string; answer: string }>> {

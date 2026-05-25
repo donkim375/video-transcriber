@@ -50,11 +50,12 @@ describe('ClaudeLLMService.summarizeTalk', () => {
   })
 })
 
-describe('ClaudeLLMService.answerQuestion', () => {
+// answerQuestion was removed in favor of toolCall + runner loop (see qa-runner tests)
+describe.skip('ClaudeLLMService.answerQuestion', () => {
   it('includes question and context in prompt', async () => {
     const client = fakeAnthropic('The answer is 42.')
     const svc = new ClaudeLLMService(client as any)
-    const ans = await svc.answerQuestion('What is the answer?', 'Reference text.')
+    const ans = await (svc as any).answerQuestion('What is the answer?', 'Reference text.')
     expect(ans).toBe('The answer is 42.')
     const call = (client.messages.create as any).mock.calls[0][0]
     const userMsg = call.messages.find((m: any) => m.role === 'user')

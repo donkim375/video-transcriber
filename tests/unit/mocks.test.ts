@@ -84,10 +84,9 @@ describe('MockEmbeddingService', () => {
 })
 
 describe('MockLLMService', () => {
-  it('returns configured boundaries/summary/answer', async () => {
-    const m = new MockLLMService([{ title: 't', speaker: 's', startMs: 0, endMs: 1 }], 'S', 'A')
+  it('returns configured boundaries/summary', async () => {
+    const m = new MockLLMService([{ title: 't', speaker: 's', startMs: 0, endMs: 1 }], 'S')
     await expect(m.segmentTranscript('x')).resolves.toHaveLength(1)
     await expect(m.summarizeTalk('x')).resolves.toBe('S')
-    await expect(m.answerQuestion('q', 'c')).resolves.toBe('A')
   })
 })

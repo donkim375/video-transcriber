@@ -4,7 +4,7 @@ import { MockLLMService } from '../mocks/llm.mock.js'
 
 describe('generateFaqsForVideo', () => {
   it('passes the video title and talk summaries to the LLM, returns the faqs', async () => {
-    const llm = new MockLLMService([], 'unused', 'unused', [
+    const llm = new MockLLMService([], 'unused', [
       { question: 'What is this?', answer: 'A talk.' },
     ])
     const result = await generateFaqsForVideo({
@@ -22,7 +22,7 @@ describe('generateFaqsForVideo', () => {
   })
 
   it('returns an empty array when there are no talks', async () => {
-    const llm = new MockLLMService([], 'unused', 'unused', [
+    const llm = new MockLLMService([], 'unused', [
       { question: 'Q', answer: 'A' },
     ])
     const result = await generateFaqsForVideo({
