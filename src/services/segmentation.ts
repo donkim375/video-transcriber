@@ -89,3 +89,67 @@ const STRATEGIES: Record<ContentType, SegmentationStrategy> = {
 export function resolveSegmentationStrategy(contentType: ContentType): SegmentationStrategy {
   return STRATEGIES[contentType]
 }
+
+export interface BoundaryValidationOptions {
+  audioDurationMs: number
+  minCoverageRatio?: number
+  maxGapMs?: number
+  introMaxStartMs?: number
+}
+
+export function validateBoundaries(
+  boundaries: TalkBoundary[],
+  opts: BoundaryValidationOptions,
+): void {
+  if (boundaries.length === 0) {
+    throw new Error('validateBoundaries: boundary array is empty')
+  }
+
+  const minCoverageRatio = opts.minCoverageRatio ?? 0.95
+  const maxGapMs = opts.maxGapMs ?? 120_000
+  const introMaxStartMs = opts.introMaxStartMs ?? 60_000
+
+  for (let i = 0; i < boundaries.length; i++) {
+    const b = boundaries[i]!
+    if (b.endMs <= b.startMs) {
+      throw new Error(
+        `validateBoundaries: boundary ${i} has non-positive duration ` +
+        `(startMs=${b.startMs}, endMs=${b.endMs})`
+      )
+    }
+  }
+
+  for (let i = 0; i < boundaries.length - 1; i++) {
+    const cur = boundaries[i]!
+    const next = boundaries[i + 1]!
+    if (next.startMs < cur.endMs) {
+      throw new Error(
+        `validateBoundaries: overlap between boundary ${i} (endMs=${cur.endMs}) ` +
+        `and boundary ${i + 1} (startMs=${next.startMs})`
+      )
+    }
+    const gap = next.startMs - cur.endMs
+    if (gap > maxGapMs) {
+      throw new Error(
+        `validateBoundaries: gap of ${gap}ms between boundary ${i} and ${i + 1} ` +
+        `exceeds maxGapMs=${maxGapMs}`
+      )
+    }
+  }
+
+  if (boundaries[0]!.startMs > introMaxStartMs) {
+    throw new Error(
+      `validateBoundaries: intro (boundary 0) starts at ${boundaries[0]!.startMs}ms, ` +
+      `which exceeds introMaxStartMs=${introMaxStartMs}`
+    )
+  }
+
+  const last = boundaries[boundaries.length - 1]!
+  const required = opts.audioDurationMs * minCoverageRatio
+  if (last.endMs < required) {
+    throw new Error(
+      `validateBoundaries: insufficient coverage — last boundary endMs=${last.endMs} ` +
+      `covers less than ${(minCoverageRatio * 100).toFixed(0)}% of audio duration ${opts.audioDurationMs}ms`
+    )
+  }
+}
