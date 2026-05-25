@@ -3,7 +3,7 @@ import type { TranscriptionResult, TalkBoundary, ContentType, Utterance } from '
 import {
   updateSourceVideoStatus, insertTalk, insertTranscript,
 } from '../../db/queries.js'
-import { resolveSegmentationStrategy, sliceUtterancesByBoundary } from '../../services/segmentation.js'
+import { resolveSegmentationStrategy, sliceUtterancesByBoundary, validateBoundaries } from '../../services/segmentation.js'
 
 export interface SegmentInput {
   transcription: TranscriptionResult
@@ -33,6 +33,10 @@ export async function runSegment(ctx: StepContext, input: SegmentInput): Promise
     videoTitle: input.videoTitle,
     llm: ctx.llm,
   })
+  const audioDurationMs = input.transcription.utterances.length > 0
+    ? Math.max(...input.transcription.utterances.map((u) => u.endMs))
+    : 0
+  validateBoundaries(boundaries, { audioDurationMs })
 
   const out: SegmentResult['talkIds'] = []
   for (let i = 0; i < boundaries.length; i++) {
