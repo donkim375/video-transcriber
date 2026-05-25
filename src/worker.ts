@@ -27,6 +27,7 @@ async function main() {
     embeddings: OpenAIEmbeddingService.fromApiKey(cfg.openaiApiKey),
     llm: ClaudeLLMService.fromApiKey(cfg.anthropicApiKey),
     tmpDir: '/tmp',
+    pollTimeoutMs: cfg.transcriptionPollTimeoutMs,
   })
   console.log('Worker started')
 }

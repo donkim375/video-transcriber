@@ -10,6 +10,7 @@ const Schema = z.object({
   YOUTUBE_COOKIES_B64: z.string().optional(),
   CORS_ALLOWED_ORIGIN: z.string().optional(),
   PORT: z.coerce.number().int().positive().default(3000),
+  TRANSCRIPTION_POLL_TIMEOUT_MS: z.coerce.number().int().positive().default(7_200_000),
   NODE_ENV: z.string().default('development'),
 })
 
@@ -24,6 +25,7 @@ export interface AppConfig {
   corsAllowedOrigin: string
   port: number
   nodeEnv: string
+  transcriptionPollTimeoutMs: number
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -43,6 +45,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     corsAllowedOrigin: parsed.data.CORS_ALLOWED_ORIGIN ?? 'http://localhost:3001',
     port: parsed.data.PORT,
     nodeEnv: parsed.data.NODE_ENV,
+    transcriptionPollTimeoutMs: parsed.data.TRANSCRIPTION_POLL_TIMEOUT_MS,
   }
 
   if (config.nodeEnv === 'production' && !config.youtubeCookiesB64) {
