@@ -309,3 +309,71 @@ export async function getMetadata(pool: pg.Pool, scope: ScopeFilters): Promise<M
     talks,
   }
 }
+
+export interface OverviewTalk {
+  talk_id: string
+  talk_title: string | null
+  speaker: string | null
+  summary: string | null
+  start_ms: number
+  end_ms: number
+  youtube_deeplink: string
+}
+
+export interface OverviewVideo {
+  source_video_id: string
+  video_title: string | null
+  day_label: string | null
+  series_slug: string | null
+  faqs: Array<{ question: string; answer: string }>
+  talks: OverviewTalk[]
+}
+
+export interface Overview {
+  videos: OverviewVideo[]
+}
+
+export async function getOverview(pool: pg.Pool, scope: ScopeFilters): Promise<Overview> {
+  const { rows } = await pool.query(
+    `select
+       sv.id as source_video_id, sv.title as video_title, sv.day_label, sv.series_slug, sv.youtube_id, sv.faqs,
+       t.id as talk_id, t.title as talk_title, t.speaker, t.start_ms, t.end_ms,
+       tr.summary
+     from source_videos sv
+     join talks t on t.source_video_id = sv.id
+     left join transcripts tr on tr.talk_id = t.id
+     where ($1::uuid is null or t.id = $1)
+       and ($2::uuid[] is null or sv.id = any($2))
+       and ($3::text is null or sv.series_slug = $3)
+       and ($4::text is null or t.speaker ilike '%' || $4 || '%')
+     order by sv.day_label nulls last, t.talk_index asc`,
+    [scope.talkId ?? null, scope.sourceVideoIds ?? null, scope.seriesSlug ?? null, scope.speaker ?? null]
+  )
+
+  const byVideo = new Map<string, OverviewVideo>()
+  for (const r of rows) {
+    let v = byVideo.get(r.source_video_id)
+    if (!v) {
+      v = {
+        source_video_id: r.source_video_id,
+        video_title: r.video_title,
+        day_label: r.day_label,
+        series_slug: r.series_slug,
+        faqs: r.faqs ?? [],
+        talks: [],
+      }
+      byVideo.set(r.source_video_id, v)
+    }
+    const startSec = Math.floor((r.start_ms ?? 0) / 1000)
+    v.talks.push({
+      talk_id: r.talk_id,
+      talk_title: r.talk_title,
+      speaker: r.speaker,
+      summary: r.summary,
+      start_ms: r.start_ms ?? 0,
+      end_ms: r.end_ms ?? 0,
+      youtube_deeplink: `https://youtu.be/${r.youtube_id}?t=${startSec}`,
+    })
+  }
+  return { videos: [...byVideo.values()] }
+}
