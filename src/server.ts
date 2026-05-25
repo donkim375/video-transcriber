@@ -10,7 +10,6 @@ import { registerVideoRoutes } from './routes/videos.js'
 import { registerTalkRoutes } from './routes/talks.js'
 import { registerSearchRoutes } from './routes/search.js'
 import { registerQaRoutes } from './routes/qa.js'
-import { registerFaqRoutes } from './routes/faqs.js'
 import type { PipelineJobData } from './queues/jobs.js'
 
 export interface AppDeps {
@@ -32,6 +31,5 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   await registerTalkRoutes(app, deps)
   await registerSearchRoutes(app, deps)
   await registerQaRoutes(app, deps)
-  await registerFaqRoutes(app, deps)
   return app
 }

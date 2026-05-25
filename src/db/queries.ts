@@ -101,31 +101,6 @@ export async function setSourceVideoDayLabel(
   )
 }
 
-export interface FaqRow {
-  question: string
-  answer: string
-  video_id: string
-  video_title: string | null
-  day_label: string | null
-}
-
-export async function getFaqsAcrossVideos(pool: pg.Pool): Promise<FaqRow[]> {
-  const { rows } = await pool.query(
-    `select sv.id as video_id, sv.title as video_title, sv.day_label, faq
-       from source_videos sv,
-            jsonb_array_elements(sv.faqs) as faq
-      where sv.status = 'ready' and sv.faqs is not null
-      order by sv.day_label nulls last, sv.created_at`
-  )
-  return rows.map((r) => ({
-    question: r.faq.question,
-    answer: r.faq.answer,
-    video_id: r.video_id,
-    video_title: r.video_title,
-    day_label: r.day_label,
-  }))
-}
-
 export interface TalkRow {
   id: string
   source_video_id: string
