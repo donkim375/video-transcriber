@@ -184,23 +184,41 @@ export async function insertChunk(pool: pg.Pool, c: ChunkInsert): Promise<{ id: 
 }
 
 export interface MatchChunkRow {
-  id: string
+  chunk_id: string
   text: string
   talk_id: string
-  start_ms: number
-  end_ms: number
+  talk_title: string
+  speaker: string
+  source_video_id: string
+  youtube_id: string
+  start_ms: number | null
+  end_ms: number | null
   similarity: number
+}
+
+export interface ScopeFilters {
+  talkId?: string
+  sourceVideoIds?: string[]
+  seriesSlug?: string
+  speaker?: string
 }
 
 export async function matchChunks(
   pool: pg.Pool,
   queryEmbedding: number[],
   matchCount: number,
-  filterTalkId?: string
+  scope: ScopeFilters = {}
 ): Promise<MatchChunkRow[]> {
   const { rows } = await pool.query(
-    `select * from match_chunks($1::vector, $2, $3)`,
-    [toPgVector(queryEmbedding), matchCount, filterTalkId ?? null]
+    `select * from match_chunks($1::vector, $2, $3, $4, $5, $6)`,
+    [
+      toPgVector(queryEmbedding),
+      matchCount,
+      scope.talkId ?? null,
+      scope.sourceVideoIds ?? null,
+      scope.seriesSlug ?? null,
+      scope.speaker ?? null,
+    ]
   )
   return rows
 }

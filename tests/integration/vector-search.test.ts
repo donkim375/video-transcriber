@@ -47,7 +47,7 @@ describe('matchChunks', () => {
   })
   it('filters by talk_id when provided', async () => {
     const talkId = await seedThreeChunks()
-    const res = await matchChunks(pool, vec(1), 10, talkId)
+    const res = await matchChunks(pool, vec(1), 10, { talkId })
     expect(res.length).toBe(3)
   })
 })
