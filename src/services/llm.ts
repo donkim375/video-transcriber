@@ -76,6 +76,19 @@ export class ClaudeLLMService implements ILLMService {
     return this.invoke(sys, user, 2048)
   }
 
+  async summarizeForSynthesis(input: { idea: string; talkTitle: string; speaker: string; evidence: string[] }): Promise<string> {
+    const sys = 'Given an idea and short evidence passages from one conference talk, produce a 1-2 sentence summary of how THIS talk treats the idea. Quote nothing. Plain prose.'
+    const user = `Idea: ${input.idea}\nTalk: "${input.talkTitle}" by ${input.speaker}\nEvidence:\n${input.evidence.map((e, i) => `(${i + 1}) ${e}`).join('\n')}`
+    const res = await this.client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 256,
+      system: sys,
+      messages: [{ role: 'user', content: user }],
+    })
+    const blocks = res.content.filter((b) => b.type === 'text' && typeof b.text === 'string')
+    return blocks.map((b) => b.text as string).join(' ').trim()
+  }
+
   async generateFaqs(input: { videoTitle: string; talks: Array<{ title: string; summary: string }> }): Promise<Array<{ question: string; answer: string }>> {
     const sys =
       'Generate 6 FAQ pairs a curious visitor would ask about this video. ' +

@@ -6,6 +6,7 @@ export class MockLLMService implements ILLMService {
   public summarizeCalls: string[] = []
   public answerCalls: { question: string; context: string }[] = []
   public faqCalls: FaqGenerationInput[] = []
+  public synthCalls: Array<{ idea: string; talkTitle: string; speaker: string; evidence: string[] }> = []
 
   constructor(
     private boundaries: TalkBoundary[] = [],
@@ -32,5 +33,9 @@ export class MockLLMService implements ILLMService {
   async generateFaqs(input: FaqGenerationInput): Promise<FaqItem[]> {
     this.faqCalls.push(input)
     return this.faqs
+  }
+  async summarizeForSynthesis(input: { idea: string; talkTitle: string; speaker: string; evidence: string[] }): Promise<string> {
+    this.synthCalls.push(input)
+    return `Synth: ${input.talkTitle} on ${input.idea}.`
   }
 }

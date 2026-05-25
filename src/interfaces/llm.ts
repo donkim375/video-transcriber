@@ -15,4 +15,5 @@ export interface ILLMService {
   summarizeTalk(transcript: string): Promise<string>
   answerQuestion(question: string, context: string): Promise<string>
   generateFaqs(input: FaqGenerationInput): Promise<FaqItem[]>
+  summarizeForSynthesis(input: { idea: string; talkTitle: string; speaker: string; evidence: string[] }): Promise<string>
 }
