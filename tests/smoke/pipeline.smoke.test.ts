@@ -16,6 +16,7 @@ import type { FastifyInstance } from 'fastify'
 const pool = makeTestPool()
 let app: FastifyInstance
 let boss: PgBoss
+let llm: MockLLMService
 
 beforeAll(async () => {
   startContainer()
@@ -40,7 +41,7 @@ beforeAll(async () => {
     rawText: sampleUtterances.map((u) => u.text).join(' '),
     utterances: sampleUtterances,
   })
-  const llm = new MockLLMService([], 'Mock summary.')
+  llm = new MockLLMService([], 'Mock summary.')
 
   await registerPipelineWorker(boss, {
     pool, youtube, transcription,
@@ -101,10 +102,14 @@ describe('full pipeline smoke', () => {
     expect(search.statusCode).toBe(200)
     expect(search.json().results.length).toBeGreaterThan(0)
 
-    // /qa route is being rewritten to tool-use loop in Task 21 — endpoint returns 501 stub here.
+    llm.pushToolCallResponse({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: 'Vectors are arrays of numbers.' }],
+    })
     const qa = await app.inject({
       method: 'POST', url: '/qa', payload: { messages: [{ role: 'user', content: 'what are vectors?' }] },
     })
-    expect([200, 501]).toContain(qa.statusCode)
+    expect(qa.statusCode).toBe(200)
+    expect(qa.json().answer).toContain('Vectors')
   }, 60_000)
 })
