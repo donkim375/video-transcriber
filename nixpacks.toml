@@ -5,7 +5,8 @@ nixPkgs = ["nodejs_22", "ffmpeg", "curl"]
 cmds = [
   "npm ci --include=dev",
   "mkdir -p /app/bin",
-  "curl -fsSL -o /app/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux",
+  "curl -fsSL -o /app/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp_linux",
+  "echo 'c2b0189f581fe4a2ddd41954f1bcb7d327db04b07ed0dea97e4f1b3e09b5dd8e  /app/bin/yt-dlp' | sha256sum -c -",
   "chmod +x /app/bin/yt-dlp",
 ]
 
