@@ -451,3 +451,45 @@ export async function searchChunksHybrid(
   )
   return rows
 }
+
+export interface ResolveCandidate {
+  talk_id: string
+  talk_title: string
+  speaker: string
+  talk_index: number
+  source_video_id: string
+  confidence: number
+}
+
+export async function resolveEntities(
+  pool: pg.Pool,
+  query: string,
+  scope: ScopeFilters
+): Promise<ResolveCandidate[]> {
+  const { rows } = await pool.query(
+    `select t.id as talk_id, t.title as talk_title, t.speaker, t.talk_index,
+            t.source_video_id,
+            (0.6 * similarity(coalesce(t.title, ''), $1) + 0.4 * similarity(coalesce(t.speaker, ''), $1)) as confidence
+       from talks t
+       join source_videos sv on sv.id = t.source_video_id
+      where ($2::uuid[] is null or sv.id = any($2))
+        and ($3::text is null or sv.series_slug = $3)
+        and (
+          similarity(coalesce(t.title, ''), $1) > 0.2
+          or similarity(coalesce(t.speaker, ''), $1) > 0.2
+          or coalesce(t.title, '') ilike '%' || $1 || '%'
+          or coalesce(t.speaker, '') ilike '%' || $1 || '%'
+        )
+      order by confidence desc
+      limit 3`,
+    [query, scope.sourceVideoIds ?? null, scope.seriesSlug ?? null]
+  )
+  return rows.map(r => ({
+    talk_id: r.talk_id,
+    talk_title: r.talk_title ?? '',
+    speaker: r.speaker ?? '',
+    talk_index: r.talk_index,
+    source_video_id: r.source_video_id,
+    confidence: Math.max(0, Math.min(1, Number(r.confidence))),
+  }))
+}
