@@ -416,3 +416,38 @@ export async function getTalkSummaries(pool: pg.Pool, scope: ScopeFilters & { li
     youtube_deeplink: `https://youtu.be/${r.youtube_id}?t=${Math.floor((r.start_ms ?? 0) / 1000)}`,
   }))
 }
+
+export interface HybridChunkRow {
+  chunk_id: string
+  text: string
+  talk_id: string
+  talk_title: string
+  speaker: string
+  source_video_id: string
+  youtube_id: string
+  start_ms: number | null
+  end_ms: number | null
+  rrf_score: number
+}
+
+export async function searchChunksHybrid(
+  pool: pg.Pool,
+  queryText: string,
+  queryEmbedding: number[],
+  matchCount: number,
+  scope: ScopeFilters
+): Promise<HybridChunkRow[]> {
+  const { rows } = await pool.query(
+    `select * from search_chunks_hybrid($1, $2::vector, $3, $4, $5, $6, $7)`,
+    [
+      queryText,
+      toPgVector(queryEmbedding),
+      matchCount,
+      scope.talkId ?? null,
+      scope.sourceVideoIds ?? null,
+      scope.seriesSlug ?? null,
+      scope.speaker ?? null,
+    ]
+  )
+  return rows
+}
