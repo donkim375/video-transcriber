@@ -60,6 +60,7 @@ Idempotent — safe to re-run. Skip if you know the schema is already up to date
 ```bash
 "$PSQL" "$DB_URL" -f src/db/migrations/001_initial.sql
 "$PSQL" "$DB_URL" -f src/db/migrations/002_content_type.sql
+"$PSQL" "$DB_URL" -f src/db/migrations/003_faqs_and_day_label.sql
 ```
 
 **Expected:** `CREATE TABLE` / `ALTER TABLE` statements for a clean DB, or `NOTICE: ... already exists` lines for a previously migrated DB (safe to ignore).
@@ -204,3 +205,67 @@ curl -sX POST http://localhost:3000/search \
 | ✅ Chunk span granularity | `distinct_spans > 1` on multi-minute videos (typically ≈ chunk count) |
 | ✅ Search results | Every result has populated `start_ms` and `end_ms` |
 | ✅ API response | Submission echoes `content_type`; `/videos/:id` exposes the `talks` array |
+
+---
+
+## FE integration checks (post-merge)
+
+These verify the frontend (`ai-engineer-recap-fe`) is wired to the real backend. Run the API on `:3000` and the FE dev server on `:3001`.
+
+### Prereqs
+
+```bash
+# Terminal A — backend
+cd ~/Code/video-transcriber/video-transcriber && run_local npm run dev
+
+# Terminal B — frontend (port 3001)
+cd ~/Code/video-transcriber/ai-engineer-recap-fe && pnpm dev
+```
+
+### Step F1: `/faqs` is removed
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/faqs
+```
+**Expected:** `404`
+
+### Step F2: `/talks` includes `day_label` and `youtube_id`
+
+After at least one video is `ready` in the DB:
+
+```bash
+curl -s http://localhost:3000/talks | jq '.[0] | {id, title, day_label, youtube_id, start_ms, youtube_deep_link}'
+```
+**Expected:** `day_label` and `youtube_id` are present (may be `null` if not set on the source video, but the keys must exist).
+
+### Step F3: Schedule section populates in browser
+
+Open `http://localhost:3001`. The Conference Schedule section should show tabs driven by `day_label` values from the DB (not hardcoded titles). If the DB is empty, both tabs show the empty state — that is correct.
+
+### Step F4: Chat returns a real answer with citations
+
+In the chat box at `http://localhost:3001`, type:
+
+> What is harness engineering?
+
+**Expected:**
+- A real answer appears (not a canned string).
+- At least one citation link appears below the answer, linking to a YouTube URL with `?t=<seconds>`.
+
+### Step F5: Error state when backend is down
+
+Kill the backend (Ctrl-C in Terminal A). Refresh `http://localhost:3001`.
+
+**Expected:**
+- Schedule section shows error banner ("Couldn't load the schedule").
+- Sending a chat message shows a red error bubble (not a crash).
+
+### FE pass criteria
+
+| Check | Expected |
+|---|---|
+| ✅ `/faqs` removed | 404 |
+| ✅ `/talks` enriched | `day_label` and `youtube_id` keys present on every row |
+| ✅ Schedule section | Renders from API, groups by `day_label`, times from `start_ms` |
+| ✅ Chat answer | Real answer + citation links with `?t=` timestamps |
+| ✅ Error states | Schedule banner + chat error bubble when backend is down |
