@@ -1,17 +1,27 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import {
+  startContainer,
+  waitForPostgres,
+  makeTestPool,
+  applyMigrations,
+} from '../integration/db-setup.js'
 import { buildServer } from '../../src/server.js'
 import type { FastifyInstance } from 'fastify'
-import type { Pool } from 'pg'
 import { MockYouTubeService } from '../mocks/youtube.mock.js'
 import { MockTranscriptionService } from '../mocks/assemblyai.mock.js'
 import { MockEmbeddingService } from '../mocks/embeddings.mock.js'
 import { MockLLMService } from '../mocks/llm.mock.js'
 
+const pool = makeTestPool()
 let app: FastifyInstance
 
 beforeAll(async () => {
+  startContainer()
+  await waitForPostgres()
+  await pool.query('drop schema public cascade; create schema public;')
+  await applyMigrations(pool)
   app = await buildServer({
-    pool: {} as Pool,
+    pool,
     youtube: new MockYouTubeService({ title: '', channel: '', durationSeconds: 0, thumbnailUrl: '', chapters: [] }),
     transcription: new MockTranscriptionService({ assemblyaiId: '', rawText: '', utterances: [] }),
     embeddings: new MockEmbeddingService(),
@@ -19,16 +29,16 @@ beforeAll(async () => {
     enqueueJob: async () => 'job-1',
     corsAllowedOrigin: 'http://localhost:3001',
   })
-})
+}, 90_000)
 
 afterAll(async () => {
   await app.close()
+  await pool.end()
 })
 
-describe('GET /health', () => {
-  it('returns ok', async () => {
-    const res = await app.inject({ method: 'GET', url: '/health' })
-    expect(res.statusCode).toBe(200)
-    expect(res.json()).toEqual({ status: 'ok' })
+describe('GET /faqs (removed)', () => {
+  it('returns 404 — endpoint is deprecated', async () => {
+    const res = await app.inject({ method: 'GET', url: '/faqs' })
+    expect(res.statusCode).toBe(404)
   })
 })

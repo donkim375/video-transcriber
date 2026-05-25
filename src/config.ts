@@ -8,6 +8,7 @@ const Schema = z.object({
   OPENAI_API_KEY: z.string().min(1),
   ANTHROPIC_API_KEY: z.string().min(1),
   YOUTUBE_COOKIES_B64: z.string().optional(),
+  CORS_ALLOWED_ORIGIN: z.string().optional(),
   PORT: z.coerce.number().int().positive().default(3000),
   NODE_ENV: z.string().default('development'),
 })
@@ -20,6 +21,7 @@ export interface AppConfig {
   openaiApiKey: string
   anthropicApiKey: string
   youtubeCookiesB64?: string
+  corsAllowedOrigin: string
   port: number
   nodeEnv: string
 }
@@ -38,6 +40,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     openaiApiKey: parsed.data.OPENAI_API_KEY,
     anthropicApiKey: parsed.data.ANTHROPIC_API_KEY,
     youtubeCookiesB64: parsed.data.YOUTUBE_COOKIES_B64,
+    corsAllowedOrigin: parsed.data.CORS_ALLOWED_ORIGIN ?? 'http://localhost:3001',
     port: parsed.data.PORT,
     nodeEnv: parsed.data.NODE_ENV,
   }
@@ -46,6 +49,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     throw new Error(
       'Invalid config: YOUTUBE_COOKIES_B64 is required in production ' +
       '(see docs/cloud-setup-tutorial.md Step 1.7)'
+    )
+  }
+  if (config.nodeEnv === 'production' && !parsed.data.CORS_ALLOWED_ORIGIN) {
+    throw new Error(
+      'Invalid config: CORS_ALLOWED_ORIGIN is required in production ' +
+      '(set it to the deployed frontend origin, e.g. https://your-app.vercel.app)'
     )
   }
 

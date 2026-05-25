@@ -13,6 +13,8 @@ export interface SourceVideoRow {
   content_type: ContentType
   status: string
   error_message: string | null
+  faqs: Array<{ question: string; answer: string }> | null
+  day_label: string | null
   created_at: Date
   updated_at: Date
 }
@@ -31,6 +33,19 @@ export async function insertSourceVideo(
 
 export async function getSourceVideoById(pool: pg.Pool, id: string): Promise<SourceVideoRow | null> {
   const { rows } = await pool.query(`select * from source_videos where id = $1`, [id])
+  return rows[0] ?? null
+}
+
+export async function getSourceVideoForTalk(
+  pool: pg.Pool,
+  talkId: string
+): Promise<{ source_video_id: string; youtube_id: string; title: string | null; day_label: string | null } | null> {
+  const { rows } = await pool.query(
+    `select sv.id as source_video_id, sv.youtube_id, sv.title, sv.day_label
+       from talks t join source_videos sv on t.source_video_id = sv.id
+      where t.id = $1`,
+    [talkId]
+  )
   return rows[0] ?? null
 }
 
@@ -61,6 +76,28 @@ export async function updateSourceVideoMetadata(
        set title=$2, channel=$3, duration_seconds=$4, thumbnail_url=$5, has_chapters=$6, updated_at=now()
        where id=$1`,
     [id, m.title, m.channel, m.durationSeconds, m.thumbnailUrl, m.hasChapters]
+  )
+}
+
+export async function setSourceVideoFaqs(
+  pool: pg.Pool,
+  id: string,
+  faqs: Array<{ question: string; answer: string }>
+): Promise<void> {
+  await pool.query(
+    `update source_videos set faqs = $2::jsonb, updated_at = now() where id = $1`,
+    [id, JSON.stringify(faqs)]
+  )
+}
+
+export async function setSourceVideoDayLabel(
+  pool: pg.Pool,
+  id: string,
+  dayLabel: string
+): Promise<void> {
+  await pool.query(
+    `update source_videos set day_label = $2, updated_at = now() where id = $1`,
+    [id, dayLabel]
   )
 }
 

@@ -19,6 +19,12 @@ const BoundarySchema = z.object({
 })
 const BoundaryArraySchema = z.array(BoundarySchema)
 
+const FaqSchema = z.object({
+  question: z.string(),
+  answer: z.string(),
+})
+const FaqArraySchema = z.array(FaqSchema)
+
 export class ClaudeLLMService implements ILLMService {
   constructor(private client: ClientLike) {}
 
@@ -64,5 +70,28 @@ export class ClaudeLLMService implements ILLMService {
       'If the answer is not in the context, say so.'
     const user = `Context:\n${context}\n\nQuestion: ${question}`
     return this.invoke(sys, user, 2048)
+  }
+
+  async generateFaqs(input: { videoTitle: string; talks: Array<{ title: string; summary: string }> }): Promise<Array<{ question: string; answer: string }>> {
+    const sys =
+      'Generate 6 FAQ pairs a curious visitor would ask about this video. ' +
+      'Each answer must be grounded in the provided talk summaries (do not invent facts). ' +
+      'Keep answers concise (1-3 sentences). ' +
+      'Respond with ONLY a JSON array of {question, answer} objects. No prose.'
+    const talksBlock = input.talks
+      .map((t, i) => `Talk ${i + 1}: ${t.title}\nSummary: ${t.summary}`)
+      .join('\n\n')
+    const user = `Video title: ${input.videoTitle}\n\n${talksBlock}`
+    const txt = await this.invoke(sys, user, 2048)
+    const match = txt.match(/\[[\s\S]*\]/)
+    if (!match) throw new Error('Claude generateFaqs: no JSON array in response')
+    const raw = JSON.parse(match[0])
+    const result = FaqArraySchema.safeParse(raw)
+    if (!result.success) {
+      throw new Error(
+        `Claude generateFaqs: malformed array: ${result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ')}`
+      )
+    }
+    return result.data
   }
 }

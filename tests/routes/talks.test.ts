@@ -12,7 +12,7 @@ import { MockYouTubeService } from '../mocks/youtube.mock.js'
 import { MockTranscriptionService } from '../mocks/assemblyai.mock.js'
 import { MockEmbeddingService } from '../mocks/embeddings.mock.js'
 import { MockLLMService } from '../mocks/llm.mock.js'
-import { insertSourceVideo, insertTalk, insertTranscript } from '../../src/db/queries.js'
+import { insertSourceVideo, insertTalk, insertTranscript, setSourceVideoDayLabel } from '../../src/db/queries.js'
 
 const pool = makeTestPool()
 let app: FastifyInstance
@@ -29,6 +29,7 @@ beforeAll(async () => {
     embeddings: new MockEmbeddingService(),
     llm: new MockLLMService(),
     enqueueJob: async () => 'job-1',
+    corsAllowedOrigin: 'http://localhost:3001',
   })
 }, 90_000)
 
@@ -42,7 +43,8 @@ afterAll(async () => {
 })
 
 async function seed() {
-  const sv = await insertSourceVideo(pool, { youtubeUrl: 'https://youtu.be/a', youtubeId: 'a' })
+  const sv = await insertSourceVideo(pool, { youtubeUrl: 'https://youtu.be/abc12345678', youtubeId: 'abc12345678' })
+  await setSourceVideoDayLabel(pool, sv.id, 'Day 1')
   const t1 = await insertTalk(pool, {
     sourceVideoId: sv.id,
     title: 'Vectors',
@@ -76,6 +78,18 @@ describe('GET /talks', () => {
     const res = await app.inject({ method: 'GET', url: '/talks' })
     expect(res.statusCode).toBe(200)
     expect(res.json()).toHaveLength(2)
+  })
+
+  it('returns day_label and youtube_id joined from source_videos', async () => {
+    await seed()
+    const res = await app.inject({ method: 'GET', url: '/talks' })
+    expect(res.statusCode).toBe(200)
+    const rows = res.json()
+    expect(rows).toHaveLength(2)
+    for (const r of rows) {
+      expect(r.day_label).toBe('Day 1')
+      expect(r.youtube_id).toBe('abc12345678')
+    }
   })
 
   it('filters by speaker', async () => {

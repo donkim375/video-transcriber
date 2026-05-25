@@ -72,4 +72,38 @@ describe('loadConfig', () => {
     const { loadConfig } = await import('../../src/config.js')
     expect(() => loadConfig()).toThrow(/YOUTUBE_COOKIES_B64.*required.*production/i)
   })
+
+  it('accepts an optional CORS_ALLOWED_ORIGIN and exposes it on AppConfig', async () => {
+    process.env.SUPABASE_CONNECTION_STRING = 'postgres://x'
+    process.env.ASSEMBLYAI_API_KEY = 'a'
+    process.env.OPENAI_API_KEY = 'o'
+    process.env.ANTHROPIC_API_KEY = 'an'
+    process.env.CORS_ALLOWED_ORIGIN = 'https://my-frontend.vercel.app'
+    const { loadConfig } = await import('../../src/config.js')
+    const cfg = loadConfig()
+    expect(cfg.corsAllowedOrigin).toBe('https://my-frontend.vercel.app')
+  })
+
+  it('defaults corsAllowedOrigin to http://localhost:3001 when unset', async () => {
+    process.env.SUPABASE_CONNECTION_STRING = 'postgres://x'
+    process.env.ASSEMBLYAI_API_KEY = 'a'
+    process.env.OPENAI_API_KEY = 'o'
+    process.env.ANTHROPIC_API_KEY = 'an'
+    delete process.env.CORS_ALLOWED_ORIGIN
+    const { loadConfig } = await import('../../src/config.js')
+    const cfg = loadConfig()
+    expect(cfg.corsAllowedOrigin).toBe('http://localhost:3001')
+  })
+
+  it('throws when CORS_ALLOWED_ORIGIN missing in production', async () => {
+    process.env.NODE_ENV = 'production'
+    process.env.SUPABASE_CONNECTION_STRING = 'postgres://x'
+    process.env.ASSEMBLYAI_API_KEY = 'a'
+    process.env.OPENAI_API_KEY = 'o'
+    process.env.ANTHROPIC_API_KEY = 'an'
+    process.env.YOUTUBE_COOKIES_B64 = 'eyJjb29raWUiOiAiZGF0YSJ9'
+    delete process.env.CORS_ALLOWED_ORIGIN
+    const { loadConfig } = await import('../../src/config.js')
+    expect(() => loadConfig()).toThrow(/CORS_ALLOWED_ORIGIN.*required.*production/i)
+  })
 })

@@ -16,11 +16,13 @@ export async function registerTalkRoutes(app: FastifyInstance, deps: AppDeps): P
     if (!parsed.success) return reply.code(400).send({ error: 'invalid query' })
     const { conference, speaker, limit, offset } = parsed.data
     const { rows } = await deps.pool.query(
-      `select * from talks
-         where ($1::text is null or conference = $1)
-           and ($2::text is null or speaker = $2)
-         order by created_at desc
-         limit $3 offset $4`,
+      `select t.*, sv.day_label, sv.youtube_id
+         from talks t
+         join source_videos sv on sv.id = t.source_video_id
+        where ($1::text is null or t.conference = $1)
+          and ($2::text is null or t.speaker = $2)
+        order by t.created_at desc
+        limit $3 offset $4`,
       [conference ?? null, speaker ?? null, limit, offset]
     )
     return rows

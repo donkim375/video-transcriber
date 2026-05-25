@@ -56,6 +56,7 @@ beforeAll(async () => {
     embeddings: new MockEmbeddingService(),
     llm,
     enqueueJob: async (data) => (await boss.send(QUEUE_PIPELINE, data)) ?? '',
+    corsAllowedOrigin: 'http://localhost:3001',
   })
 }, 120_000)
 
