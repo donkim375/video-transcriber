@@ -110,3 +110,67 @@ describe('AssemblyAIService.getResult', () => {
     expect(result.utterances[0]!.words).toBeUndefined()
   })
 })
+
+describe('AssemblyAIService retry behavior', () => {
+  it('retries transcripts.submit on transient 5xx, then succeeds', async () => {
+    let n = 0
+    const client = {
+      files: { upload: vi.fn(async () => 'https://uploaded/audio.mp3') },
+      transcripts: {
+        submit: vi.fn(async () => {
+          n += 1
+          if (n === 1) {
+            const err = new Error('transient') as Error & { status?: number }
+            err.status = 503
+            throw err
+          }
+          return { id: 'tx-1' }
+        }),
+        get: vi.fn(),
+      },
+    }
+    const svc = new AssemblyAIService(client as any)
+    const result = await svc.submit('/tmp/x.mp3')
+    expect(result.assemblyaiId).toBe('tx-1')
+    expect(client.transcripts.submit).toHaveBeenCalledTimes(2)
+  })
+
+  it('does NOT retry transcripts.submit on 400', async () => {
+    const err = new Error('bad audio') as Error & { status?: number }
+    err.status = 400
+    const client = {
+      files: { upload: vi.fn(async () => 'https://uploaded/audio.mp3') },
+      transcripts: {
+        submit: vi.fn(async () => { throw err }),
+        get: vi.fn(),
+      },
+    }
+    const svc = new AssemblyAIService(client as any)
+    await expect(svc.submit('/tmp/x.mp3')).rejects.toThrow('bad audio')
+    expect(client.transcripts.submit).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries files.upload on 429', async () => {
+    let n = 0
+    const client = {
+      files: {
+        upload: vi.fn(async () => {
+          n += 1
+          if (n === 1) {
+            const err = new Error('rate limited') as Error & { status?: number }
+            err.status = 429
+            throw err
+          }
+          return 'https://uploaded/audio.mp3'
+        }),
+      },
+      transcripts: {
+        submit: vi.fn(async () => ({ id: 'tx-1' })),
+        get: vi.fn(),
+      },
+    }
+    const svc = new AssemblyAIService(client as any)
+    await svc.submit('/tmp/x.mp3')
+    expect(client.files.upload).toHaveBeenCalledTimes(2)
+  })
+})

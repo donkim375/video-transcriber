@@ -1,5 +1,6 @@
 import OpenAI from 'openai'
 import type { IEmbeddingService } from '../interfaces/embeddings.js'
+import { withRetry } from './retry.js'
 
 type ClientLike = {
   embeddings: {
@@ -33,7 +34,10 @@ export class OpenAIEmbeddingService implements IEmbeddingService {
     const out: number[][] = []
     for (let i = 0; i < texts.length; i += this.batchSize) {
       const batch = texts.slice(i, i + this.batchSize)
-      const res = await this.client.embeddings.create({ input: batch, model: this.model })
+      const res = await withRetry(
+        () => this.client.embeddings.create({ input: batch, model: this.model }),
+        { opName: 'openai.embeddings.create' },
+      )
       for (const item of res.data) out.push(item.embedding)
     }
     return out

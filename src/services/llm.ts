@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { z } from 'zod'
 import type { ILLMService } from '../interfaces/llm.js'
 import type { TalkBoundary } from '../types/index.js'
+import { withRetry } from './retry.js'
 
 type ClientLike = {
   messages: {
@@ -33,12 +34,15 @@ export class ClaudeLLMService implements ILLMService {
   }
 
   private async invoke(system: string, user: string, maxTokens = 4096): Promise<string> {
-    const res = await this.client.messages.create({
-      model: MODEL,
-      max_tokens: maxTokens,
-      system,
-      messages: [{ role: 'user', content: user }],
-    })
+    const res = await withRetry(
+      () => this.client.messages.create({
+        model: MODEL,
+        max_tokens: maxTokens,
+        system,
+        messages: [{ role: 'user', content: user }],
+      }),
+      { opName: 'anthropic.messages.create' },
+    )
     const blocks = res.content.filter((b) => b.type === 'text' && typeof b.text === 'string')
     return blocks.map((b) => b.text as string).join('\n').trim()
   }

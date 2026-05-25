@@ -106,4 +106,36 @@ describe('loadConfig', () => {
     const { loadConfig } = await import('../../src/config.js')
     expect(() => loadConfig()).toThrow(/CORS_ALLOWED_ORIGIN.*required.*production/i)
   })
+
+  it('parses TRANSCRIPTION_POLL_TIMEOUT_MS when set', async () => {
+    process.env.SUPABASE_CONNECTION_STRING = 'postgres://x'
+    process.env.ASSEMBLYAI_API_KEY = 'a'
+    process.env.OPENAI_API_KEY = 'o'
+    process.env.ANTHROPIC_API_KEY = 'an'
+    process.env.TRANSCRIPTION_POLL_TIMEOUT_MS = '3600000'
+    const { loadConfig } = await import('../../src/config.js')
+    const cfg = loadConfig()
+    expect(cfg.transcriptionPollTimeoutMs).toBe(3_600_000)
+  })
+
+  it('defaults transcriptionPollTimeoutMs to 7_200_000 (120 min) when unset', async () => {
+    process.env.SUPABASE_CONNECTION_STRING = 'postgres://x'
+    process.env.ASSEMBLYAI_API_KEY = 'a'
+    process.env.OPENAI_API_KEY = 'o'
+    process.env.ANTHROPIC_API_KEY = 'an'
+    delete process.env.TRANSCRIPTION_POLL_TIMEOUT_MS
+    const { loadConfig } = await import('../../src/config.js')
+    const cfg = loadConfig()
+    expect(cfg.transcriptionPollTimeoutMs).toBe(7_200_000)
+  })
+
+  it('rejects non-positive TRANSCRIPTION_POLL_TIMEOUT_MS', async () => {
+    process.env.SUPABASE_CONNECTION_STRING = 'postgres://x'
+    process.env.ASSEMBLYAI_API_KEY = 'a'
+    process.env.OPENAI_API_KEY = 'o'
+    process.env.ANTHROPIC_API_KEY = 'an'
+    process.env.TRANSCRIPTION_POLL_TIMEOUT_MS = '0'
+    const { loadConfig } = await import('../../src/config.js')
+    expect(() => loadConfig()).toThrow(/TRANSCRIPTION_POLL_TIMEOUT_MS/)
+  })
 })

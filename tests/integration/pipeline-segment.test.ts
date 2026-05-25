@@ -64,7 +64,7 @@ describe('runSegment', () => {
       sourceVideoId: sv.id,
       youtubeUrl: 'https://youtu.be/abc',
     }
-    const chapters = [{ title: 'Vectors by Alice', startMs: 5000, endMs: 13000 }]
+    const chapters = [{ title: 'Vectors by Alice', startMs: 0, endMs: 24000 }]
     const result = await runSegment(ctx, { transcription: transcription(), chapters, contentType: 'conference' })
 
     expect(result.talkIds).toHaveLength(1)
@@ -76,9 +76,9 @@ describe('runSegment', () => {
     expect(talks).toHaveLength(1)
     expect(talks[0]!.title).toBe('Vectors')
     expect(talks[0]!.speaker).toBe('Alice')
-    expect(talks[0]!.youtube_deep_link).toBe('https://youtu.be/abc?t=5s')
-    expect(talks[0]!.start_ms).toBe(5000)
-    expect(talks[0]!.end_ms).toBe(13000)
+    expect(talks[0]!.youtube_deep_link).toBe('https://youtu.be/abc?t=0s')
+    expect(talks[0]!.start_ms).toBe(0)
+    expect(talks[0]!.end_ms).toBe(24000)
 
     const tx = await getTranscriptByTalkId(pool, talks[0]!.id)
     expect(tx).toBeTruthy()
@@ -119,5 +119,39 @@ describe('runSegment', () => {
     const talks = await listTalksForVideo(pool, sv.id)
     expect(talks).toHaveLength(1)
     expect(talks[0]!.title).toBe('LLM Talk')
+  })
+})
+
+describe('runSegment — boundary validation', () => {
+  it('throws a descriptive error when chapters overlap', async () => {
+    const sv = await insertSourceVideo(pool, {
+      youtubeUrl: 'https://youtu.be/overlap',
+      youtubeId: 'overlap',
+    })
+    const ctx: StepContext = {
+      pool,
+      youtube: new MockYouTubeService({ title: '', channel: '', durationSeconds: 0, thumbnailUrl: '', chapters: [] }),
+      transcription: new MockTranscriptionService({ assemblyaiId: 'tx-overlap', rawText: '', utterances: [] }),
+      embeddings: new MockEmbeddingService(),
+      llm: new MockLLMService([], 'summary', 'answer'),
+      tmpDir: tmpdir(),
+      sourceVideoId: sv.id,
+      youtubeUrl: 'https://youtu.be/overlap',
+    }
+
+    // transcription() fixture spans [0, 24000] via sampleUtterances.
+    // Two overlapping chapters: [0,13000] and [5000,24000].
+    const overlappingChapters = [
+      { title: 'A', startMs: 0,    endMs: 13000 },
+      { title: 'B', startMs: 5000, endMs: 24000 },
+    ]
+
+    await expect(
+      runSegment(ctx, {
+        transcription: transcription(),
+        chapters: overlappingChapters,
+        contentType: 'conference',
+      })
+    ).rejects.toThrow(/overlap/i)
   })
 })

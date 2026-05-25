@@ -5,6 +5,7 @@ import type {
   TranscriptionStatus,
   TranscriptionStatusValue,
 } from '../types/index.js'
+import { withRetry } from './retry.js'
 
 type ClientLike = {
   files: { upload(p: string): Promise<string> }
@@ -31,17 +32,26 @@ export class AssemblyAIService implements ITranscriptionService {
   }
 
   async submit(audioPath: string): Promise<{ assemblyaiId: string }> {
-    const audio_url = await this.client.files.upload(audioPath)
-    const { id } = await this.client.transcripts.submit({
-      audio_url,
-      speaker_labels: true,
-      speech_models: [...SPEECH_MODELS],
-    })
+    const audio_url = await withRetry(
+      () => this.client.files.upload(audioPath),
+      { opName: 'assemblyai.files.upload' },
+    )
+    const { id } = await withRetry(
+      () => this.client.transcripts.submit({
+        audio_url,
+        speaker_labels: true,
+        speech_models: [...SPEECH_MODELS],
+      }),
+      { opName: 'assemblyai.transcripts.submit' },
+    )
     return { assemblyaiId: id }
   }
 
   async getStatus(transcriptionId: string): Promise<TranscriptionStatus> {
-    const t = await this.client.transcripts.get(transcriptionId)
+    const t = await withRetry(
+      () => this.client.transcripts.get(transcriptionId),
+      { opName: 'assemblyai.transcripts.get.status' },
+    )
     const rawStatus = String(t.status)
     const mapped = STATUS_MAP[rawStatus]
     const status: TranscriptionStatusValue = mapped ?? 'error'
@@ -54,7 +64,10 @@ export class AssemblyAIService implements ITranscriptionService {
   }
 
   async getResult(transcriptionId: string): Promise<TranscriptionResult> {
-    const t = await this.client.transcripts.get(transcriptionId)
+    const t = await withRetry(
+      () => this.client.transcripts.get(transcriptionId),
+      { opName: 'assemblyai.transcripts.get.result' },
+    )
     if (t.status !== 'completed') {
       throw new Error(`Transcript ${transcriptionId} not completed (status: ${t.status})`)
     }

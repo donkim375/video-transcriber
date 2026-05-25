@@ -62,3 +62,35 @@ describe('ClaudeLLMService.answerQuestion', () => {
     expect(userMsg.content).toContain('Reference text.')
   })
 })
+
+describe('ClaudeLLMService retry behavior', () => {
+  it('retries client.messages.create on transient 5xx, then succeeds', async () => {
+    let n = 0
+    const client = {
+      messages: {
+        create: vi.fn(async () => {
+          n += 1
+          if (n === 1) {
+            const err = new Error('transient') as Error & { status?: number }
+            err.status = 503
+            throw err
+          }
+          return { content: [{ type: 'text', text: 'A summary.' }] }
+        }),
+      },
+    }
+    const svc = new ClaudeLLMService(client as any)
+    const result = await svc.summarizeTalk('some transcript')
+    expect(result).toBe('A summary.')
+    expect(client.messages.create).toHaveBeenCalledTimes(2)
+  })
+
+  it('does NOT retry client.messages.create on 400', async () => {
+    const err = new Error('bad prompt') as Error & { status?: number }
+    err.status = 400
+    const client = { messages: { create: vi.fn(async () => { throw err }) } }
+    const svc = new ClaudeLLMService(client as any)
+    await expect(svc.summarizeTalk('x')).rejects.toThrow('bad prompt')
+    expect(client.messages.create).toHaveBeenCalledTimes(1)
+  })
+})

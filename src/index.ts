@@ -26,7 +26,8 @@ async function main() {
     transcription: AssemblyAIService.fromApiKey(cfg.assemblyaiApiKey),
     embeddings: OpenAIEmbeddingService.fromApiKey(cfg.openaiApiKey),
     llm: ClaudeLLMService.fromApiKey(cfg.anthropicApiKey),
-    enqueueJob: async (data) => (await boss.send(QUEUE_PIPELINE, data)) ?? '',
+    enqueueJob: async (data) =>
+      (await boss.send(QUEUE_PIPELINE, data, { retryLimit: 0 })) ?? '',
     corsAllowedOrigin: cfg.corsAllowedOrigin,
   })
   await app.listen({ port: cfg.port, host: '0.0.0.0' })

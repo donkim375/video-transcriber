@@ -3,6 +3,7 @@ import {
   boundariesFromChapters,
   sliceUtterancesByBoundary,
   resolveSegmentationStrategy,
+  validateBoundaries,
 } from '../../src/services/segmentation.js'
 import { sampleChapters } from '../fixtures/chapters.js'
 import { sampleUtterances } from '../fixtures/utterances.js'
@@ -151,5 +152,68 @@ describe('AutoStrategy', () => {
     expect(boundaries).toHaveLength(1)
     expect(boundaries[0]).toMatchObject({ title: 'My Talk', startMs: 0, endMs: 24000 })
     expect(llm.segmentCalls).toHaveLength(0)
+  })
+})
+
+describe('validateBoundaries', () => {
+  const good = [
+    { title: 'Intro', speaker: '', startMs: 0, endMs: 5000 },
+    { title: 'Talk 1', speaker: 'Alice', startMs: 5000, endMs: 13000 },
+    { title: 'Talk 2', speaker: 'Bob', startMs: 13000, endMs: 24000 },
+  ]
+
+  it('passes on a valid contiguous boundary set', () => {
+    expect(() => validateBoundaries(good, { audioDurationMs: 24000 })).not.toThrow()
+  })
+
+  it('throws on empty array', () => {
+    expect(() => validateBoundaries([], { audioDurationMs: 24000 })).toThrow(/empty/i)
+  })
+
+  it('throws on zero-or-negative duration boundary, naming index', () => {
+    const bad = [
+      { title: 'A', speaker: '', startMs: 0, endMs: 5000 },
+      { title: 'B', speaker: '', startMs: 5000, endMs: 5000 },
+      { title: 'C', speaker: '', startMs: 5000, endMs: 24000 },
+    ]
+    expect(() => validateBoundaries(bad, { audioDurationMs: 24000 })).toThrow(/boundary 1/)
+  })
+
+  it('throws on overlap, naming the offending index', () => {
+    const bad = [
+      { title: 'A', speaker: '', startMs: 0, endMs: 6000 },
+      { title: 'B', speaker: '', startMs: 5000, endMs: 13000 },
+      { title: 'C', speaker: '', startMs: 13000, endMs: 24000 },
+    ]
+    expect(() => validateBoundaries(bad, { audioDurationMs: 24000 })).toThrow(/overlap.*boundary 1/i)
+  })
+
+  it('throws on gap larger than maxGapMs', () => {
+    const bad = [
+      { title: 'A', speaker: '', startMs: 0, endMs: 5000 },
+      { title: 'B', speaker: '', startMs: 200000, endMs: 240000 },
+    ]
+    expect(() => validateBoundaries(bad, { audioDurationMs: 240000 })).toThrow(/gap/i)
+  })
+
+  it('throws when intro starts after introMaxStartMs', () => {
+    const bad = [
+      { title: 'A', speaker: '', startMs: 90000, endMs: 100000 },
+    ]
+    expect(() => validateBoundaries(bad, { audioDurationMs: 100000 })).toThrow(/intro/i)
+  })
+
+  it('throws when last endMs covers less than minCoverageRatio of audio', () => {
+    const bad = [
+      { title: 'A', speaker: '', startMs: 0, endMs: 50000 },
+    ]
+    expect(() => validateBoundaries(bad, { audioDurationMs: 100000 })).toThrow(/coverage/i)
+  })
+
+  it('respects custom minCoverageRatio', () => {
+    const bs = [{ title: 'A', speaker: '', startMs: 0, endMs: 60000 }]
+    expect(() =>
+      validateBoundaries(bs, { audioDurationMs: 100000, minCoverageRatio: 0.5 })
+    ).not.toThrow()
   })
 })

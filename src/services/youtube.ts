@@ -1,3 +1,12 @@
+// NOTE: YouTubeService is deliberately NOT wrapped with the retry helper.
+// Retrying yt-dlp invocations amplifies YouTube bot-detection signal and
+// raises the risk of an account/IP block. On yt-dlp failure, the operator
+// is expected to intervene manually (re-cookie, switch network, or fall
+// back to manual audio upload).
+//
+// See docs/superpowers/specs/2026-05-25-9hour-parse-critical-fixes-design.md
+// (Component 2) for the full rationale.
+
 import { exec as nodeExec } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { IYouTubeService } from '../interfaces/youtube.js'
